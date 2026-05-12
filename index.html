@@ -279,9 +279,11 @@ const ES=['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
 const ER=['BON','MOYEN','VETUSTE'];
 const SK='inv_v4',UK='inv_user',GK='inv_gs';
 const SH_DATA='Inventaire',SH_UPD='Updates',SH_NEW='NouveauxArticles',SH_LOC='NouveauxEmplacements';
-const H_UPD=['CBI','SERV','RENOUV','OBS','BY','TS'];
+const H_UPD=['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE'];
 const H_NEW=['CBI','CBE','SITE','BAT','ETAGE','BUREAU','FAM','ART','QTY','SERV','RENOUV','OBS','MARQUE','MODELE','SERIE','BY','TS'];
 const H_LOC=['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
+const DRIVE_FOLDER_NAME='Inventaire_Photos';
+let driveFolderId=null;
 
 // ─────────────────────────────────────────────────────────────
 //  ÉTAT
@@ -297,7 +299,7 @@ let pendingWrites=[];
 //  INIT
 // ─────────────────────────────────────────────────────────────
 function init(){
-  loadLocal();loadGs();
+  loadLocal();loadGs();loadPhotos();
   handleOAuth();
   const u=localStorage.getItem(UK);
   if(u){currentUser=u;setUserBadge();renderDataStatus();renderMain();}
@@ -320,7 +322,7 @@ function onBureauChange(){curLoc.bureau=document.getElementById('sel-bureau').va
 // ─────────────────────────────────────────────────────────────
 function googleSignIn(){
   if(!gsConf.clientId){showToast('Configurez d\'abord le Client ID','warn');return;}
-  const scope='https://www.googleapis.com/auth/spreadsheets';
+  const scope='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
   const redirect=window.location.href.split('#')[0].split('?')[0];
   const state=Math.random().toString(36).slice(2);
   sessionStorage.setItem('oa_st',state);
@@ -366,6 +368,186 @@ async function sPut(range,rows){
   if(!r.ok)throw new Error(`PUT ${r.status}`);
   return r.json();
 }
+
+// ─────────────────────────────────────────────────────────────
+//  GOOGLE DRIVE API — Photos
+// ─────────────────────────────────────────────────────────────
+async function ensureDriveFolder(){
+  if(driveFolderId)return driveFolderId;
+  // Search for existing folder
+  const q=encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+    {headers:{Authorization:'Bearer '+gTok}});
+  if(!r.ok)throw new Error('Drive API inaccessible - activez Google Drive API dans Cloud Console');
+  const data=await r.json();
+  if(data.files&&data.files.length>0){driveFolderId=data.files[0].id;return driveFolderId;}
+  // Create folder
+  const cr=await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',headers:{Authorization:'Bearer '+gTok,'Content-Type':'application/json'},
+    body:JSON.stringify({name:DRIVE_FOLDER_NAME,mimeType:'application/vnd.google-apps.folder'})});
+  if(!cr.ok)throw new Error('Impossible de créer le dossier Drive');
+  const fd=await cr.json();
+  driveFolderId=fd.id;
+  // Make folder accessible to anyone with link (viewer)
+  await fetch(`https://www.googleapis.com/drive/v3/files/${driveFolderId}/permissions`,{
+    method:'POST',headers:{Authorization:'Bearer '+gTok,'Content-Type':'application/json'},
+    body:JSON.stringify({role:'reader',type:'anyone'})});
+  return driveFolderId;
+}
+
+async function uploadPhotoToDrive(file,cbi,photoIndex){
+  const folderId=await ensureDriveFolder();
+  const ext=file.name.split('.').pop()||'jpg';
+  const fname=`${cbi}_${photoIndex}_${Date.now()}.${ext}`;
+  // Resize/compress image before upload
+  const compressed=await compressImage(file,1200,0.82);
+  // Multipart upload
+  const boundary='inv_boundary_'+Date.now();
+  const meta=JSON.stringify({name:fname,parents:[folderId]});
+  const body=`--${boundary}
+Content-Type: application/json
+
+${meta}
+--${boundary}
+Content-Type:${compressed.type}
+
+`;
+  const bodyEnd=`
+--${boundary}--`;
+  const blob=new Blob([body,compressed,bodyEnd]);
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink',{
+    method:'POST',headers:{Authorization:'Bearer '+gTok,'Content-Type':`multipart/related; boundary=${boundary}`},
+    body:blob});
+  if(!r.ok)throw new Error('Erreur upload photo');
+  const fd=await r.json();
+  // Make file public
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`,{
+    method:'POST',headers:{Authorization:'Bearer '+gTok,'Content-Type':'application/json'},
+    body:JSON.stringify({role:'reader',type:'anyone'})});
+  const viewUrl=`https://drive.google.com/file/d/${fd.id}/view`;
+  const thumbUrl=`https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`;
+  return{id:fd.id,viewUrl,thumbUrl,name:fname};
+}
+
+function compressImage(file,maxW,quality){
+  return new Promise((res,rej)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const canvas=document.createElement('canvas');
+      let w=img.width,h=img.height;
+      if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      canvas.toBlob(b=>res(b),'image/jpeg',quality);
+    };
+    img.onerror=rej;img.src=url;
+  });
+}
+
+// Photo storage: photos[cbi] = [{id,viewUrl,thumbUrl,name}, ...]
+let photos={};
+function loadPhotos(){try{const d=JSON.parse(localStorage.getItem('inv_photos')||'{}');photos=d;}catch(e){}}
+function savePhotos(){try{localStorage.setItem('inv_photos',JSON.stringify(photos));}catch(e){}}
+
+async function updatePhotosInSheet(cbi){
+  if(!gTok||!gsConf.sheetId)return;
+  const links=(photos[cbi]||[]).map(p=>p.viewUrl).join('\n');
+  // find row in Updates sheet for this cbi
+  try{
+    const d=await sGet(`${SH_UPD}!A2:G`);
+    const rows=d.values||[];
+    const idx=rows.findIndex(r=>r[0]===cbi);
+    if(idx>=0){
+      await sPut(`${SH_UPD}!G${idx+2}`,[[links]]);
+    } else {
+      const u=updates[cbi]||{serv:'EN SERVICE',renouv:'BON',obs:'',by:currentUser,ts:Date.now()};
+      await sAppend(SH_UPD,[[cbi,u.serv,u.renouv,u.obs||'',u.by,new Date(u.ts).toISOString(),links,u.trouve||'']]);
+    }
+  }catch(e){console.error('Photo sheet update error',e);}
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PHOTO UI
+// ─────────────────────────────────────────────────────────────
+function renderPhotoSection(cbi){
+  const list=photos[cbi]||[];
+  const thumbs=list.map((p,i)=>`
+    <div style="position:relative;display:inline-block;margin:4px">
+      <a href="${p.viewUrl}" target="_blank">
+        <img src="${p.thumbUrl}" alt="photo ${i+1}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)">
+      </a>
+      <button onclick="deletePhoto('${cbi}',${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>
+    </div>`).join('');
+  return`
+    <div class="form-group" id="photo-section-${cbi}">
+      <label class="form-label"><i class="ti ti-camera" style="font-size:14px"></i> Photos (${list.length})</label>
+      <div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs||'<div style="font-size:12px;color:var(--text3)">Aucune photo</div>'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label class="btn btn-sm" style="cursor:pointer;min-height:40px">
+          <i class="ti ti-camera"></i> Prendre photo
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')">
+        </label>
+        <label class="btn btn-sm" style="cursor:pointer;min-height:40px">
+          <i class="ti ti-photo"></i> Galerie
+          <input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')">
+        </label>
+        ${!gTok?'<div style="font-size:11px;color:var(--warn-txt);align-self:center"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>':''}
+      </div>
+    </div>`;
+}
+
+async function handlePhotoCapture(event,cbi){
+  const files=[...event.target.files];
+  if(!files.length)return;
+  if(!gTok){
+    showToast('Connectez Google Sheets pour uploader les photos','warn');
+    return;
+  }
+  showToast(`Upload de ${files.length} photo(s)…`,'info');
+  const btn=event.target.closest('label');
+  if(btn)btn.style.opacity='0.5';
+  try{
+    await ensureDriveFolder();
+    if(!photos[cbi])photos[cbi]=[];
+    for(let i=0;i<files.length;i++){
+      const idx=photos[cbi].length+1;
+      const result=await uploadPhotoToDrive(files[i],cbi,idx);
+      photos[cbi].push(result);
+      showToast(`Photo ${i+1}/${files.length} uploadée ✓`,'success');
+    }
+    savePhotos();
+    await updatePhotosInSheet(cbi);
+    // Refresh photo section in modal
+    const sec=document.getElementById(`photo-section-${cbi}`);
+    if(sec)sec.outerHTML=renderPhotoSection(cbi);
+  }catch(err){
+    showToast('Erreur upload: '+err.message,'danger');
+  }
+  if(btn)btn.style.opacity='1';
+  event.target.value='';
+}
+
+async function deletePhoto(cbi,idx){
+  if(!confirm('Supprimer cette photo ?'))return;
+  const p=photos[cbi]&&photos[cbi][idx];
+  if(!p)return;
+  // Delete from Drive
+  if(gTok&&p.id){
+    try{
+      await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`,
+        {method:'DELETE',headers:{Authorization:'Bearer '+gTok}});
+    }catch(e){}
+  }
+  photos[cbi].splice(idx,1);
+  if(!photos[cbi].length)delete photos[cbi];
+  savePhotos();
+  await updatePhotosInSheet(cbi);
+  const sec=document.getElementById(`photo-section-${cbi}`);
+  if(sec)sec.outerHTML=renderPhotoSection(cbi);
+  showToast('Photo supprimée','success');
+}
+
 async function ensureSheets(){
   const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`,{headers:{Authorization:'Bearer '+gTok}});
   if(!r.ok)throw new Error(`Fichier inaccessible (${r.status}). Vérifiez le Sheet ID et les droits.`);
@@ -426,11 +608,11 @@ async function pullAll(){
 }
 async function pullUpdates(){
   try{
-    const d=await sGet(`${SH_UPD}!A2:F`);
+    const d=await sGet(`${SH_UPD}!A2:H`);
     for(const row of(d.values||[])){
-      const[cbi,serv,renouv,obs,by,ts]=row;if(!cbi)continue;
+      const[cbi,serv,renouv,obs,by,ts,photos,trouve]=row;if(!cbi)continue;
       const t=ts?new Date(ts).getTime():0;
-      if(!updates[cbi]||t>updates[cbi].ts)updates[cbi]={serv:serv||'EN SERVICE',renouv:renouv||'BON',obs:obs||'',by:by||'',ts:t};
+      if(!updates[cbi]||t>updates[cbi].ts)updates[cbi]={serv:serv||'EN SERVICE',renouv:renouv||'BON',obs:obs||'',by:by||'',ts:t,trouve:trouve||''};
     }
   }catch(e){}
 }
@@ -466,7 +648,7 @@ async function pushPending(){
   const upd=pendingWrites.filter(p=>p.type==='u');
   const ni=pendingWrites.filter(p=>p.type==='ni');
   const nl=pendingWrites.filter(p=>p.type==='nl');
-  if(upd.length)await sAppend(SH_UPD,upd.map(p=>{const u=p.d;return[u.cbi,u.serv,u.renouv,u.obs||'',u.by,new Date(u.ts).toISOString()];}));
+  if(upd.length)await sAppend(SH_UPD,upd.map(p=>{const u=p.d;return[u.cbi,u.serv,u.renouv,u.obs||'',u.by,new Date(u.ts).toISOString(),'',u.trouve||''];}));
   if(ni.length)await sAppend(SH_NEW,ni.map(p=>{const r=p.d;return[r.cbi,r.cbe,r.site,r.bat,r.etage,r.bureau,r.fam,r.art,r.qty,r.serv,r.renouv,r.obs||'',r.marque||'',r.modele||'',r.serie||'',r._addedBy,new Date(r._addedAt).toISOString()];}));
   if(nl.length)await sAppend(SH_LOC,nl.map(p=>{const r=p.d;return[r.site,r.bat,r.etage,r.bureau,r.cbe||'',r.type||'',r._addedBy,new Date(r._addedAt).toISOString()];}));
   pendingWrites=[];
@@ -475,7 +657,7 @@ function startAutoSync(){if(syncTimer)clearInterval(syncTimer);syncTimer=setInte
 
 async function writeUpd(cbi,u){
   if(!gTok){pendingWrites.push({type:'u',d:{cbi,...u}});return;}
-  try{await sAppend(SH_UPD,[[cbi,u.serv,u.renouv,u.obs||'',u.by,new Date(u.ts).toISOString()]]);}
+  try{await sAppend(SH_UPD,[[cbi,u.serv,u.renouv,u.obs||'',u.by,new Date(u.ts).toISOString(),'',u.trouve||'']]);}
   catch(e){pendingWrites.push({type:'u',d:{cbi,...u}});}
 }
 async function writeNI(item){
@@ -553,7 +735,7 @@ function showLoginModal(){
       <div class="form-group"><label class="form-label">Inventoriste</label>
         <select id="u-sel" onchange="toggleCu(this)">
           <option value="">-- Choisir --</option>
-          ${['Ahmed Benali','Sara El Idrissi','Karim Fassi','Nadia Tazi','Youssef Moukrim','Mohamed Alaoui'].map(n=>`<option>${n}</option>`).join('')}
+          ${['Mounir','Fouad','Houssain','Nadir','Ayman M','Ayman G'].map(n=>`<option>${n}</option>`).join('')}
           <option value="__c">Autre (saisir)…</option>
         </select>
       </div>
@@ -767,12 +949,14 @@ function renderTable(){
     ${f.map(r=>{
       const u=updates[r.cbi]||{},sv=u.serv||r.serv,rv=u.renouv||r.renouv,ok=!!updates[r.cbi];
       const sc=sv==='EN SERVICE'?'b-service':sv==='HORS SERVICE'?'b-hors':'b-rebut';
+      const tr=u.trouve||'';
+      const trBadge=tr==='OUI'?'<span style="font-size:11px;color:var(--success-txt);font-weight:700">✓</span>':tr==='NON'?'<span style="font-size:11px;color:var(--danger-txt);font-weight:700">✗</span>':'';
       return`<div class="t-row${ok?' inventoried':''}" onclick="openEditItem_cbi('${r.cbi}')">
         <div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}${r._new?` <span class="badge b-new" style="font-size:10px">Nouveau</span>`:''}</div>
         <div style="overflow:hidden"><div style="font-weight:${ok?700:400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div>
-          <div style="font-size:12px;color:var(--text3)">${r.fam}</div></div>
+          <div style="font-size:12px;color:var(--text3)">${r.fam}${trBadge?' · '+trBadge:''}</div></div>
         <div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div>
-        <div style="text-align:center">${ok?'<i class="ti ti-check" style="color:var(--success-txt);font-size:20px"></i>':'<i class="ti ti-circle" style="color:var(--border2);font-size:18px"></i>'}</div>
+        <div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok?'<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>':'<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi]||[]).length?`<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>`:''}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -807,6 +991,20 @@ function openEditItem(item){
       </div>
       <div class="form-group"><label class="form-label">Observation</label>
         <textarea id="e-obs" rows="3">${obs}</textarea></div>
+      <div class="form-group">
+        <label class="form-label"><i class="ti ti-map-search" style="font-size:14px"></i> Article trouvé</label>
+        <div style="display:flex;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;min-height:48px">
+            <input type="radio" name="e-trouve" id="e-trouve-oui" value="OUI" ${(u.trouve||'')==='OUI'?'checked':''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)">
+            <span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;min-height:48px">
+            <input type="radio" name="e-trouve" id="e-trouve-non" value="NON" ${(u.trouve||'')==='NON'?'checked':''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)">
+            <span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span>
+          </label>
+        </div>
+      </div>
+      ${renderPhotoSection(item.cbi)}
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
         <button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button>
@@ -814,7 +1012,8 @@ function openEditItem(item){
     </div>`);
 }
 async function saveUpd(cbi){
-  const u={serv:document.getElementById('e-sv').value,renouv:document.getElementById('e-rv').value,obs:document.getElementById('e-obs').value,by:currentUser,ts:Date.now()};
+  const trouveEl=document.querySelector('input[name="e-trouve"]:checked');
+  const u={serv:document.getElementById('e-sv').value,renouv:document.getElementById('e-rv').value,obs:document.getElementById('e-obs').value,trouve:trouveEl?trouveEl.value:'',by:currentUser,ts:Date.now()};
   updates[cbi]=u;saveLocal();closeModal();renderMain();renderDataStatus();
   showToast('✓ Article mis à jour','success');
   await writeUpd(cbi,u);
@@ -975,12 +1174,12 @@ function openExport(){
     </div>`);
 }
 function expUpd(){
-  const rows=Object.entries(updates).map(([cbi,u])=>{const o=[...DB,...newItems].find(r=>r.cbi===cbi)||{};return{'CBI':cbi,'CBE':o.cbe||'','SITE':o.site||'','BATIMENT':o.bat||'','ETAGE':o.etage||'','BUREAU':o.bureau||'','ARTICLE':o.art||'','FAMILLE':o.fam||'','ETAT SERVICE':u.serv,'RENOUV':u.renouv,'OBS':u.obs,'INVENTORISTE':u.by,'DATE':new Date(u.ts).toLocaleDateString('fr-FR'),'NOUVEAU':o._new?'OUI':'NON'};});
+  const rows=Object.entries(updates).map(([cbi,u])=>{const o=[...DB,...newItems].find(r=>r.cbi===cbi)||{};return{'CBI':cbi,'CBE':o.cbe||'','SITE':o.site||'','BATIMENT':o.bat||'','ETAGE':o.etage||'','BUREAU':o.bureau||'','ARTICLE':o.art||'','FAMILLE':o.fam||'','ETAT SERVICE':u.serv,'RENOUV':u.renouv,'OBS':u.obs,'ARTICLE TROUVE':u.trouve||'','INVENTORISTE':u.by,'DATE':new Date(u.ts).toLocaleDateString('fr-FR'),'NOUVEAU':o._new?'OUI':'NON'};});
   dlX(rows,'inv_updates');closeModal();showToast('Export téléchargé','success');
 }
 function expAll(){
   if(!DB.length)return;
-  const rows=[...DB,...newItems.filter(r=>!r._newLoc)].map(r=>{const u=updates[r.cbi]||{};return{'CBI':r.cbi,'CBE':r.cbe,'SITE':r.site,'BAT':r.bat,'ETAGE':r.etage,'BUREAU':r.bureau,'FAM':r.fam,'ART':r.art,'QTE':r.qty,'SERV':u.serv||r.serv,'RENOUV':u.renouv||r.renouv,'OBS':u.obs!==undefined?u.obs:r.obs,'MARQUE':r.marque,'MODELE':r.modele,'SERIE':r.serie,'DIR':r.dir,'INVENTORISTE':u.by||r.nom_inv||'','DATE':u.ts?new Date(u.ts).toLocaleDateString('fr-FR'):'','STATUT':updates[r.cbi]?'INVENTORIE':'EN ATTENTE','NOUVEAU':r._new?'OUI':'NON'};});
+  const rows=[...DB,...newItems.filter(r=>!r._newLoc)].map(r=>{const u=updates[r.cbi]||{};return{'CBI':r.cbi,'CBE':r.cbe,'SITE':r.site,'BAT':r.bat,'ETAGE':r.etage,'BUREAU':r.bureau,'FAM':r.fam,'ART':r.art,'QTE':r.qty,'SERV':u.serv||r.serv,'RENOUV':u.renouv||r.renouv,'OBS':u.obs!==undefined?u.obs:r.obs,'ARTICLE TROUVE':u.trouve||'','MARQUE':r.marque,'MODELE':r.modele,'SERIE':r.serie,'DIR':r.dir,'INVENTORISTE':u.by||r.nom_inv||'','DATE':u.ts?new Date(u.ts).toLocaleDateString('fr-FR'):'','STATUT':updates[r.cbi]?'INVENTORIE':'EN ATTENTE','NOUVEAU':r._new?'OUI':'NON'};});
   dlX(rows,'inv_complet');closeModal();showToast('Export téléchargé','success');
 }
 function dlX(rows,name){
