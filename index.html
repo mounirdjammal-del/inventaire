@@ -186,6 +186,19 @@ textarea{min-height:80px;resize:vertical}
 code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;padding:2px 7px;font-family:monospace;font-size:12px}
 .setup-step{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:14px;line-height:1.6}
 .step-n{width:24px;height:24px;background:var(--text);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
+.site-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .12s}
+.site-card:active{background:var(--bg2)}
+.site-statut{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:80px}
+.site-statut select{margin:0;min-height:36px;font-size:12px;padding:4px 28px 4px 8px;width:100%}
+.statut-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.dot-no{background:#ccc}
+.dot-ec{background:var(--warn-txt)}
+.dot-ok{background:var(--success-txt)}
+.scan-libre-zone{background:var(--bg2);border:3px dashed var(--border2);border-radius:var(--radius-lg);padding:28px 20px;text-align:center;margin-bottom:16px;transition:all .2s}
+.scan-libre-zone:focus-within{border-color:var(--text);border-style:solid;background:var(--bg)}
+.scan-libre-zone input{border:none;background:transparent;text-align:center;font-size:18px;font-weight:600;width:100%;padding:8px 0;margin:8px 0 0}
+.scan-libre-zone input:focus{outline:none;box-shadow:none}
+.found-card{background:var(--bg2);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -204,6 +217,8 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
     </div>
     <div class="topbar-right">
       <button class="btn btn-sm" id="btn-sync" onclick="syncNow()" style="display:none"><i class="ti ti-refresh"></i></button>
+      <button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> <span class="hide-xs">Suivi</span></button>
+      <button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i></button>
       <button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> <span class="hide-xs">Ajouter</span></button>
     </div>
   </div>
@@ -278,10 +293,13 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
 const ES=['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
 const ER=['BON','MOYEN','VETUSTE'];
 const SK='inv_v4',UK='inv_user',GK='inv_gs';
-const SH_DATA='Inventaire',SH_UPD='Updates',SH_NEW='NouveauxArticles',SH_LOC='NouveauxEmplacements';
+const SH_DATA='Inventaire',SH_UPD='Updates',SH_NEW='NouveauxArticles',SH_LOC='NouveauxEmplacements',SH_SUIVI='SuiviInventaire',SH_EXPORT='ExportFinal';
+const STATUTS_SITE=['NON OUVERT','EN COURS','TERMINE'];
 const H_UPD=['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE'];
 const H_NEW=['CBI','CBE','SITE','BAT','ETAGE','BUREAU','FAM','ART','QTY','SERV','RENOUV','OBS','MARQUE','MODELE','SERIE','BY','TS'];
 const H_LOC=['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
+const H_SUIVI=['SITE','STATUT','INVENTORISTE','DATE_DEBUT','DATE_MAJ','OBSERVATIONS'];
+const H_EXPORT=['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT INVENTAIRE','NOUVEAU ARTICLE','PHOTOS'];
 const DRIVE_FOLDER_NAME='Inventaire_Photos';
 let driveFolderId=null;
 
@@ -290,6 +308,7 @@ let driveFolderId=null;
 // ─────────────────────────────────────────────────────────────
 let DB=[],HIER={},FAMS={};
 let currentUser=null,updates={},newItems=[],newLocs=[];
+let siteStatuts={};  // {SITE: {statut,by,dateDebut,dateMaj,obs}}
 let curLoc={site:'',bat:'',etage:'',bureau:''};
 let gsConf={clientId:'',sheetId:''};
 let gTok=null,syncTimer=null,isSyncing=false,lastSync=0;
@@ -305,8 +324,8 @@ function init(){
   if(u){currentUser=u;setUserBadge();renderDataStatus();renderMain();}
   else showLoginModal();
 }
-function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');updates=d.u||{};newItems=d.ni||[];newLocs=d.nl||[];}catch(e){}}
-function saveLocal(){try{localStorage.setItem(SK,JSON.stringify({u:updates,ni:newItems,nl:newLocs,t:Date.now()}));}catch(e){}}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');updates=d.u||{};newItems=d.ni||[];newLocs=d.nl||[];siteStatuts=d.ss||{};}catch(e){}}
+function saveLocal(){try{localStorage.setItem(SK,JSON.stringify({u:updates,ni:newItems,nl:newLocs,ss:siteStatuts,t:Date.now()}));}catch(e){}}
 function loadGs(){try{const c=JSON.parse(localStorage.getItem(GK)||'{}');gsConf.clientId=c.c||'';gsConf.sheetId=c.s||'';}catch(e){}updateBadge();}
 function saveGs(){localStorage.setItem(GK,JSON.stringify({c:gsConf.clientId,s:gsConf.sheetId}));}
 
@@ -553,12 +572,12 @@ async function ensureSheets(){
   if(!r.ok)throw new Error(`Fichier inaccessible (${r.status}). Vérifiez le Sheet ID et les droits.`);
   const meta=await r.json();
   const exist=meta.sheets.map(s=>s.properties.title);
-  const needed=[SH_UPD,SH_NEW,SH_LOC].filter(s=>!exist.includes(s));
+  const needed=[SH_UPD,SH_NEW,SH_LOC,SH_SUIVI,SH_EXPORT].filter(s=>!exist.includes(s));
   if(!needed.length)return;
   await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`,
     {method:'POST',headers:{Authorization:'Bearer '+gTok,'Content-Type':'application/json'},
     body:JSON.stringify({requests:needed.map(t=>({addSheet:{properties:{title:t}}}))})}); 
-  const hMap={[SH_UPD]:H_UPD,[SH_NEW]:H_NEW,[SH_LOC]:H_LOC};
+  const hMap={[SH_UPD]:H_UPD,[SH_NEW]:H_NEW,[SH_LOC]:H_LOC,[SH_SUIVI]:H_SUIVI,[SH_EXPORT]:H_EXPORT};
   for(const s of needed)await sPut(`${s}!A1`,[hMap[s]]);
 }
 
@@ -604,7 +623,7 @@ async function syncNow(){
   setSyncing(false);
 }
 async function pullAll(){
-  await pullUpdates();await pullNewItems();await pullLocs();saveLocal();
+  await pullUpdates();await pullNewItems();await pullLocs();await pullSuivi();saveLocal();
 }
 async function pullUpdates(){
   try{
@@ -654,6 +673,68 @@ async function pushPending(){
   pendingWrites=[];
 }
 function startAutoSync(){if(syncTimer)clearInterval(syncTimer);syncTimer=setInterval(()=>{if(gTok)syncNow();},30000);}
+
+async function pullSuivi(){
+  try{
+    const d=await sGet(`${SH_SUIVI}!A2:F`);
+    for(const row of(d.values||[])){
+      const[site,statut,by,dateDebut,dateMaj,obs]=row;if(!site)continue;
+      siteStatuts[site]={statut:statut||'NON OUVERT',by:by||'',dateDebut:dateDebut||'',dateMaj:dateMaj||'',obs:obs||''};
+    }
+  }catch(e){}
+}
+
+async function writeSuivi(site,statut,obs){
+  if(!gTok||!gsConf.sheetId)return;
+  const now=new Date().toLocaleDateString('fr-FR');
+  const prev=siteStatuts[site]||{};
+  const dateDebut=prev.dateDebut||now;
+  siteStatuts[site]={statut,by:currentUser,dateDebut,dateMaj:now,obs:obs||prev.obs||''};
+  saveLocal();
+  try{
+    const d=await sGet(`${SH_SUIVI}!A2:A`);
+    const rows=d.values||[];
+    const idx=rows.findIndex(r=>r[0]===site);
+    const row=[site,statut,currentUser,dateDebut,now,obs||prev.obs||''];
+    if(idx>=0){await sPut(`${SH_SUIVI}!A${idx+2}:F${idx+2}`,[row]);}
+    else{await sAppend(SH_SUIVI,[row]);}
+  }catch(e){console.error('Suivi write error',e);}
+}
+
+async function generateExportFinal(){
+  if(!DB.length){showToast('Chargez d'abord les données','warn');return;}
+  showToast('Génération export final…','info');
+  try{
+    await ensureSheets();
+    // Clear existing data (keep header)
+    const all=[...DB,...newItems.filter(r=>!r._newLoc)];
+    const rows=all.map(r=>{
+      const u=updates[r.cbi]||{};
+      const photoLinks=(photos[r.cbi]||[]).map(p=>p.viewUrl).join(' | ');
+      return[
+        r.site,r.bat,r.etage,r.bureau,
+        r.cbe,r.cbi,r.fam,r.art,r.qty,
+        u.serv||r.serv,
+        u.renouv||r.renouv,
+        u.obs!==undefined?u.obs:(r.obs||''),
+        u.trouve||'',
+        r.serie||'',r.modele||'',r.marque||'',r.dir||'',r.patrim||'',
+        u.by||r.nom_inv||'',
+        u.ts?new Date(u.ts).toLocaleDateString('fr-FR'):'',
+        updates[r.cbi]?'INVENTORIE':'EN ATTENTE',
+        r._new?'OUI':'NON',
+        photoLinks
+      ];
+    });
+    // Write in chunks of 500 rows
+    await sPut(`${SH_EXPORT}!A2:W2`,[['']]); // clear first data row as signal
+    for(let i=0;i<rows.length;i+=500){
+      await sPut(`${SH_EXPORT}!A${i+2}:W${i+rows.slice(i,i+500).length+1}`,rows.slice(i,i+500));
+    }
+    showToast(`Export final généré : ${rows.length} lignes dans la feuille "${SH_EXPORT}"`, 'success');
+  }catch(e){showToast('Erreur export: '+e.message,'danger');}
+}
+
 
 async function writeUpd(cbi,u){
   if(!gTok){pendingWrites.push({type:'u',d:{cbi,...u}});return;}
@@ -1170,6 +1251,7 @@ function openExport(){
     <div class="modal-body">
       <div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div>
       <button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button>
+      <button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${!DB.length||!gTok?'disabled':''}>  <i class="ti ti-table-export"></i> Export final dans Google Sheets</button>
       <button class="btn btn-block" onclick="expAll()" ${!DB.length?'disabled':''}><i class="ti ti-database-export"></i> Base complète (Excel)</button>
     </div>`);
 }
@@ -1190,6 +1272,158 @@ function dlX(rows,name){
 function resetUpdates(){
   if(!confirm('Réinitialiser les données locales ?'))return;
   updates={};newItems=[];newLocs=[];pendingWrites=[];saveLocal();renderMain();renderDataStatus();showToast('Réinitialisé','success');
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  SUIVI PAR SITE
+// ─────────────────────────────────────────────────────────────
+function openSuiviPanel(){
+  if(!DB.length){showToast('Chargez d'abord les données','warn');return;}
+  const sites=Object.keys(HIER).sort();
+  const rows=sites.map(site=>{
+    const allItems=[...DB,...newItems].filter(r=>r.site===site&&!r._newLoc);
+    const inv=allItems.filter(r=>updates[r.cbi]).length;
+    const pct=allItems.length?Math.round(inv/allItems.length*100):0;
+    const st=siteStatuts[site]||{statut:'NON OUVERT'};
+    const dotClass=st.statut==='TERMINE'?'dot-ok':st.statut==='EN COURS'?'dot-ec':'dot-no';
+    const statutColor=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text3)';
+    const opts=STATUTS_SITE.map(s=>`<option value="${s}"${st.statut===s?' selected':''}>${s}</option>`).join('');
+    return`<div class="site-card" id="sc-${site.replace(/\s/g,'_')}">
+      <div class="statut-dot ${dotClass}"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div>
+        <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div>
+        <div style="margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>${pct}%</span></div>
+          <div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div>
+        </div>
+        ${st.by?`<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>`:''}
+      </div>
+      <div class="site-statut">
+        <select onchange="changeSiteStatut('${site}',this.value)" style="color:${statutColor};font-weight:600">${opts}</select>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totAll=[...DB,...newItems].filter(r=>!r._newLoc).length;
+  const totInv=Object.keys(updates).length;
+  const totPct=totAll?Math.round(totInv/totAll*100):0;
+
+  showModal(`
+    <div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final dans Sheets"><i class="ti ti-table-export"></i></button>
+        <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:700">Avancement global</div>
+          <div style="font-size:20px;font-weight:700">${totPct}%</div>
+        </div>
+        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px">
+        <span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span>
+        <span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span>
+        <span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span>
+      </div>
+      ${rows}
+      <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)">
+        <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
+      </div>
+    </div>`);
+}
+
+async function changeSiteStatut(site,statut){
+  await writeSuivi(site,statut,'');
+  openSuiviPanel(); // refresh
+  renderMain();
+  showToast(`${site} → ${statut}`,'success');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SCAN LIBRE — recherche indépendante de l'emplacement
+// ─────────────────────────────────────────────────────────────
+function openScanLibre(){
+  showModal(`
+    <div class="modal-drag"></div>
+    <div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n'importe quel code barre — l'article est recherché dans toute la base, quel que soit l'emplacement.</div>
+      <div class="scan-libre-zone">
+        <i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i>
+        <input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div>
+      </div>
+      <div id="scan-libre-result"></div>
+    </div>`);
+  setTimeout(()=>{const el=document.getElementById('scan-libre-inp');if(el)el.focus();},100);
+}
+
+function onScanLibreKey(e){
+  if(e.key!=='Enter')return;
+  const v=e.target.value.trim();if(!v)return;
+  scanLibreSearch(v);
+}
+
+function scanLibreSearch(val){
+  const all=[...DB,...newItems].filter(r=>!r._newLoc);
+  const found=all.filter(r=>r.cbi===val||r.cbe===val);
+  const res=document.getElementById('scan-libre-result');
+  if(!res)return;
+
+  if(!found.length){
+    res.innerHTML=`<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable dans la base</div>`;
+    return;
+  }
+
+  // Multiple results if item moved (same cbi, different location in newItems)
+  const cards=found.map(item=>{
+    const u=updates[item.cbi]||{};
+    const sv=u.serv||item.serv,rv=u.renouv||item.renouv;
+    const sc=sv==='EN SERVICE'?'b-service':sv==='HORS SERVICE'?'b-hors':'b-rebut';
+    const rc=rv==='BON'?'b-bon':rv==='MOYEN'?'b-moyen':'b-vetuste';
+    const isInv=!!updates[item.cbi];
+    const tr=u.trouve||'';
+    return`<div class="found-card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <span class="tag"><i class="ti ti-barcode" style="font-size:11px"></i> ${item.cbi}</span>
+        ${item.marque?`<span class="tag">${item.marque}</span>`:''}
+        ${item.serie?`<span class="tag">SN: ${item.serie}</span>`:''}
+      </div>
+      <div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px">
+        <i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="badge ${sc}">${sv}</span>
+        <span class="badge ${rc}">${rv}</span>
+        ${isInv?`<span class="badge b-service">✓ Inventorié par ${u.by}</span>`:''}
+        ${tr==='OUI'?`<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>`:''}
+        ${tr==='NON'?`<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>`:''}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="openEditFromScanLibre('${item.cbi}')"><i class="ti ti-edit"></i> Mettre à jour</button>
+        <button class="btn btn-sm" onclick="navigateTo('${item.site}','${item.bat}','${item.etage}','${item.bureau}');closeModal()"><i class="ti ti-arrow-right"></i> Aller à l'emplacement</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  res.innerHTML=`<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`;
+}
+
+function openEditFromScanLibre(cbi){
+  const item=[...DB,...newItems].find(r=>r.cbi===cbi);
+  if(!item)return;
+  closeModal();
+  setTimeout(()=>openEditItem(item),100);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1231,6 +1465,25 @@ function renderDashboard(){
         <div style="font-size:14px;font-weight:700;margin-bottom:12px">Nouveaux articles (${newItems.filter(r=>r._new&&!r._newLoc).length})</div>
         ${!newItems.filter(r=>r._new&&!r._newLoc).length?'<div style="color:var(--text2);font-size:14px">Aucun</div>':
           newItems.filter(r=>r._new&&!r._newLoc).slice(0,8).map(r=>`<div style="padding:7px 0;border-bottom:0.5px solid var(--border)"><div style="font-weight:600;font-size:14px">${r.art}</div><div style="color:var(--text2);font-size:12px">${r.bureau} — ${r._addedBy}</div></div>`).join('')}
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:10px">État par site</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+        ${Object.keys(HIER).sort().map(site=>{
+          const st=siteStatuts[site]||{statut:'NON OUVERT'};
+          const allS=[...DB,...newItems].filter(r=>r.site===site&&!r._newLoc);
+          const invS=allS.filter(r=>updates[r.cbi]).length;
+          const pctS=allS.length?Math.round(invS/allS.length*100):0;
+          const bg=st.statut==='TERMINE'?'var(--success-bg)':st.statut==='EN COURS'?'var(--warn-bg)':'var(--bg2)';
+          const tc=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text2)';
+          return`<div style="background:${bg};border-radius:var(--radius);padding:12px;cursor:pointer" onclick="openSuiviPanel()">
+            <div style="font-size:13px;font-weight:700;color:${tc};margin-bottom:4px">${site}</div>
+            <div style="font-size:12px;color:${tc};opacity:.8;margin-bottom:6px">${st.statut}</div>
+            <div class="pbar"><div class="pbar-fill" style="width:${pctS}%;background:${tc}"></div></div>
+            <div style="font-size:11px;color:${tc};opacity:.7;margin-top:3px">${pctS}%</div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
 }
