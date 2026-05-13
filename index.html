@@ -8,6 +8,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Inventaire">
 <title>Inventaire Immobilisations</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
@@ -43,161 +45,1076 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .content{flex:1;display:flex;overflow:hidden}
 .sidebar{width:300px;flex-shrink:0;background:var(--bg);border-right:0.5px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;transition:transform .25s ease}
 .sidebar-inner{padding:16px;flex:1}
+.sidebar-section{margin-bottom:22px}
+.sidebar-label{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
 .main{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
-.btn{min-height:var(--touch);background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:0 16px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;color:var(--text);transition:background .12s;white-space:nowrap;border:none;box-shadow:0 1px 2px rgba(0,0,0,0.05)}
-.user-badge{background:var(--info-bg);color:var(--info-txt);border-radius:20px;padding:5px 12px;font-size:13px;display:flex;align-items:center;gap:6px;font-weight:600}
-.nav-bar{background:var(--bg);border-top:0.5px solid var(--border);display:flex;justify-content:space-around;padding:6px 0;flex-shrink:0}
-.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;background:transparent;border:none;color:var(--text2);cursor:pointer}
+@media(max-width:768px){
+  .sidebar{position:fixed;top:0;left:0;height:100%;z-index:50;transform:translateX(-100%);width:88vw;max-width:340px;box-shadow:4px 0 24px rgba(0,0,0,.18)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:49}
+  .sidebar-overlay.open{display:block}
+  .main{padding:12px}
+  .btn-menu{display:flex !important}
+}
+.btn{min-height:var(--touch);background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);padding:0 16px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;color:var(--text);font-family:inherit;transition:background .12s,opacity .12s;white-space:nowrap;touch-action:manipulation}
+.btn:active{opacity:.7}
+.btn-sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn-primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.btn-primary:active{opacity:.8}
+.btn-google{background:#fff;border:1px solid #dadce0;color:#3c4043}
+.btn-menu{display:none;min-height:44px;min-width:44px;padding:0;border:none;background:transparent}
+.btn-icon{min-height:44px;min-width:44px;padding:0;border:none;background:transparent;border-radius:50%}
+.btn-block{width:100%;justify-content:center;margin-bottom:8px}
+select,input[type=text],input[type=number],textarea{
+  width:100%;border:0.5px solid var(--border2);border-radius:var(--radius);
+  padding:12px 14px;font-size:15px;background:var(--bg);color:var(--text);
+  font-family:inherit;margin-bottom:10px;min-height:var(--touch);
+  -webkit-appearance:none;appearance:none}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23999' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--text2);box-shadow:0 0 0 3px rgba(0,0,0,.07)}
+select:disabled{opacity:.45;cursor:not-allowed}
+textarea{min-height:80px;resize:vertical}
+.form-label{font-size:13px;color:var(--text2);margin-bottom:6px;display:block;font-weight:500}
+.form-group{margin-bottom:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row .form-group{margin-bottom:0}
+.table-wrap{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.t-head{display:grid;grid-template-columns:130px 1fr 110px 36px;padding:10px 14px;background:var(--bg2);border-bottom:0.5px solid var(--border);font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.03em;gap:8px}
+.t-row{display:grid;grid-template-columns:130px 1fr 110px 36px;padding:14px;border-bottom:0.5px solid var(--border);align-items:center;cursor:pointer;gap:8px;min-height:64px}
+.t-row:last-child{border-bottom:none}
+.t-row:active{background:var(--bg2)}
+.t-row.inventoried{background:rgba(59,109,17,.06)}
+@media(prefers-color-scheme:dark){.t-row.inventoried{background:rgba(139,195,74,.08)}}
+@media(max-width:600px){
+  .t-head{grid-template-columns:1fr 100px 32px}
+  .t-head .col-cbi{display:none}
+  .t-row{grid-template-columns:1fr 100px 32px}
+  .t-row .col-cbi{display:none}
+}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+.b-service{background:var(--success-bg);color:var(--success-txt)}
+.b-hors{background:var(--danger-bg);color:var(--danger-txt)}
+.b-rebut{background:var(--warn-bg);color:var(--warn-txt)}
+.b-bon{background:#eaf3de;color:#3b6d11}
+.b-moyen{background:#faeeda;color:#854f0b}
+.b-vetuste{background:#fcebeb;color:#a32d2d}
+.b-new{background:var(--info-bg);color:var(--info-txt)}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat-card{background:var(--bg2);border-radius:var(--radius);padding:12px 14px}
+.stat-lbl{font-size:11px;color:var(--text2);margin-bottom:4px}
+.stat-val{font-size:22px;font-weight:700}
+@media(max-width:600px){.stats-row{grid-template-columns:repeat(2,1fr)}.stat-val{font-size:18px}}
+.scan-zone{background:var(--bg2);border:2px dashed var(--border2);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;transition:border-color .2s,background .2s}
+.scan-zone:focus-within{border-color:var(--text);border-style:solid;background:var(--bg)}
+.scan-zone i{font-size:24px;color:var(--text2);flex-shrink:0}
+.scan-zone input{margin:0;border:none;background:transparent;flex:1;font-size:16px;padding:0;min-width:0}
+.scan-zone input:focus{outline:none;box-shadow:none}
+.scan-hint{font-size:12px;color:var(--text3);white-space:nowrap}
+.search-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.search-row input{flex:1;min-width:180px;margin:0}
+.search-row select{width:160px;margin:0}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:200}
+@media(min-width:600px){.modal-overlay{align-items:center}}
+.modal{background:var(--bg);border-radius:var(--radius-lg) var(--radius-lg) 0 0;width:100%;max-width:580px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+@media(min-width:600px){.modal{border-radius:var(--radius-lg);max-height:88vh}}
+.modal-head{padding:18px 20px 14px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:1}
+.modal-head h2{font-size:17px;font-weight:700}
+.modal-body{padding:20px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:0.5px solid var(--border)}
+.modal-drag{width:40px;height:4px;background:var(--border2);border-radius:2px;margin:10px auto 0;display:block}
+@media(min-width:600px){.modal-drag{display:none}}
+.alert{padding:12px 14px;border-radius:var(--radius);font-size:14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.alert i{flex-shrink:0;margin-top:1px;font-size:17px}
+.alert-info{background:var(--info-bg);color:var(--info-txt)}
+.alert-success{background:var(--success-bg);color:var(--success-txt)}
+.alert-warn{background:var(--warn-bg);color:var(--warn-txt)}
+.alert-danger{background:var(--danger-bg);color:var(--danger-txt)}
+.pbar{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;margin-top:6px}
+.pbar-fill{height:100%;background:var(--text);border-radius:3px;transition:width .4s}
+.tag{display:inline-block;background:var(--bg2);border:0.5px solid var(--border);border-radius:5px;padding:2px 8px;font-size:12px;color:var(--text2);margin:2px 3px 2px 0}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:var(--radius-lg);font-size:14px;z-index:999;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,.18);transition:opacity .3s}
+.gs-badge{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;min-height:36px}
+.gs-ok{background:#e6f4ea;color:#137333}
+.gs-off{background:var(--warn-bg);color:var(--warn-txt)}
+.gs-sync{background:var(--info-bg);color:var(--info-txt)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0}
+.dot.pulse{animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty i{font-size:64px;display:block;margin-bottom:16px;opacity:.25}
+.item-box{background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px}
+.dash-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px}
+@media(max-width:600px){.dash-grid{grid-template-columns:1fr}}
+.mini-bar{width:80px;height:4px;background:var(--bg2);border-radius:2px;overflow:hidden}
+.mini-bar-fill{height:100%;background:var(--text);border-radius:2px}
+.user-badge{background:var(--info-bg);color:var(--info-txt);border-radius:20px;padding:5px 12px;font-size:13px;display:flex;align-items:center;gap:6px}
+.loc-scan-row{display:flex;align-items:center;gap:10px;background:var(--bg2);border:2px dashed var(--border2);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;transition:all .2s}
+.loc-scan-row:focus-within{border-color:var(--text);border-style:solid;background:var(--bg)}
+.loc-scan-row input{margin:0;border:none;background:transparent;flex:1;font-size:15px;padding:0;min-width:0}
+.loc-scan-row input:focus{outline:none;box-shadow:none}
+.loc-feedback{display:none;font-size:12px;margin-bottom:8px;padding:6px 10px;border-radius:6px}
+.progress-info{font-size:12px;color:var(--text2);margin-bottom:4px}
+.progress-lbl{font-size:11px;color:var(--text3);margin-top:3px}
+code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;padding:2px 7px;font-family:monospace;font-size:12px}
+.setup-step{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:14px;line-height:1.6}
+.hier-row{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px;transition:background .12s}
+.hier-row.clickable:active{background:var(--bg2)}
+.hier-row.clickable:hover{background:var(--bg2)}
+.hier-row-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.hier-row-label{display:flex;align-items:center;gap:10px;flex:1;min-width:0;overflow:hidden}
+.hier-row-stats{display:flex;align-items:center;gap:12px;flex-shrink:0}
+#btn-glogin{width:100%;min-height:52px;border-radius:12px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;font-family:inherit;transition:box-shadow .2s}
+#btn-glogin:hover{box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.nav-bar{background:var(--bg);border-top:0.5px solid var(--border);display:flex;justify-content:space-around;padding:6px 0;flex-shrink:0;position:sticky;bottom:0;z-index:20}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 12px;border-radius:var(--radius);cursor:pointer;min-width:60px;transition:background .12s;border:none;background:transparent;font-family:inherit;color:var(--text2)}
 .nav-item.active{color:var(--text)}
-/* Styles pour la page de login */
-#login-page{position:fixed;inset:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;z-index:100;flex-direction:column;padding:20px}
-.login-card{background:var(--bg);padding:30px;border-radius:var(--radius-lg);box-shadow:0 10px 30px rgba(0,0,0,0.1);text-align:center;width:100%;max-width:400px}
+.nav-item i{font-size:22px}
+.nav-item span{font-size:10px;font-weight:500}
+.nav-item.active i{color:var(--text)}
+.home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 0;max-width:480px;margin:0 auto}
+.home-tile{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:24px 16px;text-align:center;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:12px}
+.home-tile:active{transform:scale(.97);background:var(--bg2)}
+.home-tile i{font-size:40px}
+.home-tile .tile-label{font-size:15px;font-weight:700}
+.home-tile .tile-sub{font-size:12px;color:var(--text2)}
+.tile-inventory{border-color:var(--info-txt);background:var(--info-bg)}
+.tile-inventory i,.tile-inventory .tile-label{color:var(--info-txt)}
+.tile-locations{border-color:var(--success-txt);background:var(--success-bg)}
+.tile-locations i,.tile-locations .tile-label{color:var(--success-txt)}
+.tile-articles{border-color:var(--warn-txt);background:var(--warn-bg)}
+.tile-articles i,.tile-articles .tile-label{color:var(--warn-txt)}
+.tile-progress{border-color:var(--text2);background:var(--bg2)}
+.tile-progress i,.tile-progress .tile-label{color:var(--text)}
+.step-n{width:24px;height:24px;background:var(--text);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
+.site-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .12s}
+.site-card:active{background:var(--bg2)}
+.site-statut{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:80px}
+.site-statut select{margin:0;min-height:36px;font-size:12px;padding:4px 28px 4px 8px;width:100%}
+.statut-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.dot-no{background:#ccc}
+.dot-ec{background:var(--warn-txt)}
+.dot-ok{background:var(--success-txt)}
+.scan-libre-zone{background:var(--bg2);border:3px dashed var(--border2);border-radius:var(--radius-lg);padding:28px 20px;text-align:center;margin-bottom:16px;transition:all .2s}
+.scan-libre-zone:focus-within{border-color:var(--text);border-style:solid;background:var(--bg)}
+.scan-libre-zone input{border:none;background:transparent;text-align:center;font-size:18px;font-weight:600;width:100%;padding:8px 0;margin:8px 0 0}
+.scan-libre-zone input:focus{outline:none;box-shadow:none}
+.found-card{background:var(--bg2);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px}
 </style>
 </head>
 <body>
-
-<div id="login-page">
-  <div class="login-card">
-    <div class="logo" style="font-size:24px;margin-bottom:10px">Inventaire <span>Immo</span></div>
-    <p style="color:var(--text2);margin-bottom:24px">Veuillez vous connecter pour continuer</p>
-    <button class="btn btn-block" onclick="loginGoogle()" style="background:#4285f4;color:#fff;width:100%">
-      <i class="ti ti-brand-google"></i> Se connecter avec Google
-    </button>
-  </div>
-</div>
-
 <div class="app" id="app" style="display:none">
   <div class="topbar">
+    <button class="btn btn-menu" id="btn-menu" onclick="toggleSidebar()" aria-label="Menu"><i class="ti ti-menu-2" style="font-size:22px"></i></button>
     <div class="logo">Inventaire <span>Immo</span></div>
-    <div id="user-area"></div> <div class="topbar-right">
-      <button class="btn btn-sm" onclick="syncNow()"><i class="ti ti-refresh"></i></button>
+    <div id="user-area"></div>
+    <div id="gs-badge" class="gs-badge gs-off" onclick="openGsPanel()" title="Google Sheets">
+      <div class="dot" id="gs-dot"></div>
+      <span id="gs-txt">Configurer</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-sm" id="btn-sync" onclick="syncNow()" style="display:none"><i class="ti ti-refresh"></i></button>
+      <div id="topbar-actions"></div>
     </div>
   </div>
-  
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
   <div class="content">
-    <div class="sidebar" id="sidebar" style="display:none">
+    <div class="sidebar" id="sidebar">
       <div class="sidebar-inner">
-         <button class="btn btn-block" onclick="logout()"><i class="ti ti-logout"></i> Déconnexion</button>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Scanner emplacement</div>
+          <div class="loc-scan-row">
+            <i class="ti ti-qrcode" style="font-size:20px;color:var(--text2)"></i>
+            <input type="text" id="loc-scan-inp" placeholder="Code barre emplacement…" onkeydown="onLocScanKey(event)" autocomplete="off" inputmode="none">
+          </div>
+          <div class="loc-feedback" id="loc-feedback"></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">
+            Emplacement
+            <button class="btn btn-sm" onclick="openAddLocation()" style="min-height:28px;padding:0 8px;font-size:12px"><i class="ti ti-plus"></i> Nouveau</button>
+          </div>
+          <select id="sel-site" onchange="onSiteChange()"><option value="">-- Site --</option></select>
+          <select id="sel-bat" onchange="onBatChange()" disabled><option value="">-- Bâtiment --</option></select>
+          <select id="sel-etage" onchange="onEtageChange()" disabled><option value="">-- Étage --</option></select>
+          <select id="sel-bureau" onchange="onBureauChange()" disabled><option value="">-- Bureau --</option></select>
+          <div id="loc-stats" style="display:none;margin-top:6px">
+            <div class="progress-info" id="loc-count"></div>
+            <div class="pbar"><div class="pbar-fill" id="loc-pbar" style="width:0%"></div></div>
+            <div class="progress-lbl" id="loc-lbl"></div>
+          </div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Données</div>
+          <div id="data-status"></div>
+          <button class="btn btn-block" onclick="document.getElementById('file-inp').click()"><i class="ti ti-upload"></i> Charger Excel local</button>
+          <input type="file" id="file-inp" accept=".xlsx,.xls" style="display:none" onchange="loadExcel(this)">
+        </div>
+        <div class="sidebar-section" id="sidebar-admin-btns"></div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Session</div>
+          <button class="btn btn-block" onclick="changeUser()"><i class="ti ti-logout"></i> Changer de compte</button>
+          <button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>
+          <button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>
+        </div>
       </div>
     </div>
-    <div class="main" id="main">
-      <h1>Bienvenue</h1>
-      <p id="welcome-msg">Chargement des données...</p>
-    </div>
+    <div class="main" id="main"></div>
   </div>
-
   <div class="nav-bar" id="nav-bar" style="display:none">
-    <button class="nav-item active" onclick="goView('home')"><i class="ti ti-home"></i><span>Accueil</span></button>
-    <button class="nav-item" onclick="goView('inventory')"><i class="ti ti-clipboard-check"></i><span>Inventaire</span></button>
+    <button class="nav-item active" id="nav-home" data-view="home" onclick="goViewData(this)"><i class="ti ti-home"></i><span>Accueil</span></button>
+    <button class="nav-item" id="nav-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><span>Inventaire</span></button>
+    <button class="nav-item" id="nav-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><span>Emplacements</span></button>
+    <button class="nav-item" id="nav-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><span>Articles</span></button>
+    <button class="nav-item" id="nav-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><span>Avancement</span></button>
   </div>
 </div>
+<div id="modal"></div>
 
 <script>
-// --- CONFIGURATION ---
-const USER_NAMES = {
-  'mounir.djammal@gmail.com': 'Mounir DJAMMAL',
-  'operateurmafintec5@gmail.com': 'Nadir Chaqour'
-};
-
+// ---------- CONFIGURATION ----------
 const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.googleusercontent.com';
-let googleProfile = null;
+const APP_SHEET_ID  = '1dOkNOh9XBBJzyrS6dd1lrGzt1Rr4Xsg3AYYGDABM5GM';
 
-// --- LOGIQUE AUTHENTIFICATION ---
-function loginGoogle() {
-  const root = window.location.origin + window.location.pathname;
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(root)}&response_type=token&scope=https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/spreadsheets`;
-  window.location.href = url;
+const ES = ['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
+const ER = ['BON','MOYEN','VETUSTE'];
+const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
+const SH_DATA = 'Inventaire', SH_UPD = 'Updates', SH_NEW = 'NouveauxArticles', SH_LOC = 'NouveauxEmplacements', SH_SUIVI = 'SuiviInventaire', SH_EXPORT = 'ExportFinal';
+const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
+const H_UPD = ['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE'];
+const H_NEW = ['CBI','CBE','SITE','BAT','ETAGE','BUREAU','FAM','ART','QTY','SERV','RENOUV','OBS','MARQUE','MODELE','SERIE','BY','TS'];
+const H_LOC = ['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
+const H_SUIVI = ['SITE','STATUT','INVENTORISTE','DATE_DEBUT','DATE_MAJ','OBSERVATIONS'];
+const H_EXPORT = ['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT INVENTAIRE','NOUVEAU ARTICLE','PHOTOS'];
+const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
+
+// Tous les utilisateurs Google connectés sont administrateurs (aucune liste prédéfinie)
+function can(permission) { return true; }
+
+let driveFolderId = null;
+let DB = [], HIER = {}, FAMS = {};
+let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
+let curLoc = { site: '', bat: '', etage: '', bureau: '' };
+let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
+let drillState = { site: null, bat: null, etage: null };
+let currentView = 'home';
+let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
+let googleProfile = { name: '', email: '', picture: '' };
+let pendingWrites = [];
+let photos = {};
+
+// ---------- UTILITAIRES ----------
+function showToast(msg, type = 'info') {
+  let t = document.getElementById('toastEl');
+  if (!t) { t = document.createElement('div'); t.id = 'toastEl'; document.body.appendChild(t); }
+  const bg = { success: 'var(--success-bg)', danger: 'var(--danger-bg)', warn: 'var(--warn-bg)', info: 'var(--info-bg)' };
+  const tc = { success: 'var(--success-txt)', danger: 'var(--danger-txt)', warn: 'var(--warn-txt)', info: 'var(--info-txt)' };
+  const ic = { success: 'ti-check', danger: 'ti-alert-circle', warn: 'ti-alert-triangle', info: 'ti-info-circle' };
+  t.className = 'toast';
+  t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:12px;font-size:14px;z-index:999;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,.18);transition:opacity .3s;background:${bg[type]};color:${tc[type]};border:0.5px solid currentColor`;
+  t.innerHTML = `<i class="ti ${ic[type]}"></i>${msg}`;
+  t.style.opacity = '1';
+  clearTimeout(window.toastTimer);
+  window.toastTimer = setTimeout(() => t.style.opacity = '0', 3500);
 }
 
-async function fetchGoogleProfile() {
-  const tok = localStorage.getItem('google_token');
-  if(!tok) return null;
+function showModal(html) {
+  document.getElementById('modal').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+}
+function closeModal() { document.getElementById('modal').innerHTML = ''; }
+
+function saveLocal() {
+  try { localStorage.setItem(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, t: Date.now() })); } catch(e) {}
+}
+function loadLocal() {
+  try { const d = JSON.parse(localStorage.getItem(SK) || '{}'); updates = d.u || {}; newItems = d.ni || []; newLocs = d.nl || []; siteStatuts = d.ss || {}; } catch(e) {}
+}
+function loadPhotos() {
+  try { photos = JSON.parse(localStorage.getItem('inv_photos') || '{}'); } catch(e) { photos = {}; }
+}
+function savePhotos() {
+  try { localStorage.setItem('inv_photos', JSON.stringify(photos)); } catch(e) {}
+}
+
+// ---------- GOOGLE AUTH ----------
+function setToken(tok, expiresIn) {
+  gTok = tok;
+  gTokExpiry = Date.now() + (expiresIn - 120) * 1000;
+  try { sessionStorage.setItem('gTok', tok); sessionStorage.setItem('gTokExpiry', String(gTokExpiry)); } catch(e) {}
+  scheduleTokenRefresh(expiresIn);
+}
+function restoreToken() {
   try {
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tok}` }
-    });
-    const data = await r.json();
-    googleProfile = { name: data.name, email: data.email };
-    return googleProfile;
+    const tok = sessionStorage.getItem('gTok');
+    const exp = parseInt(sessionStorage.getItem('gTokExpiry') || '0');
+    if (tok && exp > Date.now() + 60000) {
+      gTok = tok; gTokExpiry = exp;
+      scheduleTokenRefresh(Math.floor((exp - Date.now()) / 1000));
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+function scheduleTokenRefresh(expiresIn) {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  const delay = Math.max((expiresIn - 120) * 1000, 10000);
+  refreshTimer = setTimeout(() => silentTokenRefresh(), delay);
+}
+function silentTokenRefresh() {
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'display:none;width:0;height:0;position:absolute';
+  iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(window.location.href.split('#')[0])}&response_type=token&scope=https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/drive.file&prompt=none&login_hint=${encodeURIComponent(getStoredEmail())}`;
+  iframe.onload = () => {
+    try {
+      const hash = iframe.contentWindow.location.hash;
+      if (hash.includes('access_token')) {
+        const p = new URLSearchParams(hash.slice(1));
+        const tok = p.get('access_token');
+        const exp = parseInt(p.get('expires_in') || '3600');
+        if (tok) setToken(tok, exp);
+      }
+    } catch(e) { console.warn('Silent refresh failed'); updateBadge('off'); showToast('Session expirée, reconnectez-vous', 'warn'); }
+    setTimeout(() => iframe.remove(), 1000);
+  };
+  document.body.appendChild(iframe);
+}
+async function fetchGoogleProfile() {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${gTok}` } });
+    if (!r.ok) throw new Error();
+    const info = await r.json();
+    const email = (info.email || '').toLowerCase();
+    googleProfile = {
+      name: info.name || info.given_name || email.split('@')[0] || 'Utilisateur',
+      email: email,
+      picture: info.picture || ''
+    };
+    currentUser = googleProfile.name;
+    localStorage.setItem('inv_google_email', email);
+    localStorage.setItem('inv_user', currentUser);
+    sessionStorage.setItem('gProfile', JSON.stringify(googleProfile));
   } catch(e) {
-    console.error("Erreur profil:", e);
-    return null;
+    const saved = localStorage.getItem('inv_user');
+    if (saved) currentUser = saved;
+    googleProfile = { name: currentUser || 'Utilisateur', email: '', picture: '' };
   }
+  renderUserBadge();
 }
-
-// --- LOGIQUE AFFICHAGE ---
-function renderUserBadge() {
-  const area = document.getElementById('user-area');
-  if (!area) return;
-  
-  let nameToDisplay = "";
-  if (googleProfile && googleProfile.email) {
-    // Normalisation de l'email pour la recherche (minuscules + suppression espaces)
-    const emailKey = googleProfile.email.toLowerCase().trim();
-    nameToDisplay = USER_NAMES[emailKey] || googleProfile.name;
-  } else if (googleProfile && googleProfile.name) {
-    nameToDisplay = googleProfile.name;
-  }
-
-  if (nameToDisplay) {
-    area.innerHTML = `
-      <div class="user-badge">
-        <i class="ti ti-user-circle"></i>
-        <span>${nameToDisplay}</span>
-      </div>`;
+function restoreProfile() {
+  try {
+    const p = JSON.parse(sessionStorage.getItem('gProfile') || '{}');
+    if (p.email) {
+      googleProfile = p;
+      currentUser = p.name;
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+function getStoredEmail() {
+  try { return localStorage.getItem('inv_google_email') || ''; } catch(e) { return ''; }
+}
+function updateBadge(state) {
+  const b = document.getElementById('gs-badge'), t = document.getElementById('gs-txt'), d = document.getElementById('gs-dot');
+  if (!b) return;
+  b.className = 'gs-badge ';
+  if (d) d.classList.remove('pulse');
+  if (gTok || state === 'ok') {
+    b.classList.add('gs-ok');
+    const em = getStoredEmail();
+    t.textContent = em ? em.split('@')[0] + ' ✓' : 'Google Sheets ✓';
+    const syncBtn = document.getElementById('btn-sync');
+    if (syncBtn) syncBtn.style.display = 'flex';
   } else {
-    area.innerHTML = '';
+    b.classList.add('gs-off');
+    t.textContent = 'Se connecter';
+    const syncBtn = document.getElementById('btn-sync');
+    if (syncBtn) syncBtn.style.display = 'none';
   }
 }
-
-function showAppShell(){
-  document.getElementById('login-page').style.display='none';
-  document.getElementById('app').style.display='flex';
-  document.getElementById('nav-bar').style.display='flex';
-  
-  // CRUCIAL : On dessine le badge dès qu'on affiche l'app
-  renderUserBadge(); 
+function setSyncing(on, msg) {
+  isSyncing = on;
+  if (on) { updateBadge('sync'); document.getElementById('gs-dot')?.classList.add('pulse'); }
+  else updateBadge(gTok ? 'ok' : null);
+}
+function googleSignIn() {
+  const redirect = window.location.href.split('#')[0];
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=token&scope=https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/drive.file&prompt=select_account`;
 }
 
-function goView(v) {
+// ---------- SHEETS API ----------
+async function sGet(range) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${gTok}` } });
+  if (r.status === 401) throw new Error('Session expirée');
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+async function sAppend(sheet, rows) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(sheet)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) });
+  if (r.status === 401) throw new Error('Session expirée');
+  if (!r.ok) throw new Error(`Append ${r.status}`);
+  return r.json();
+}
+async function sPut(range, rows) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, { method: 'PUT', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) });
+  if (!r.ok) throw new Error(`PUT ${r.status}`);
+  return r.json();
+}
+async function ensureSheets() {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
+  if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
+  const meta = await r.json();
+  const exist = meta.sheets.map(s => s.properties.title);
+  const needed = [SH_UPD, SH_NEW, SH_LOC, SH_SUIVI, SH_EXPORT].filter(s => !exist.includes(s));
+  if (!needed.length) return;
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
+  const hMap = { [SH_UPD]: H_UPD, [SH_NEW]: H_NEW, [SH_LOC]: H_LOC, [SH_SUIVI]: H_SUIVI, [SH_EXPORT]: H_EXPORT };
+  for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
+}
+async function pullAll() {
+  await pullUpdates(); await pullNewItems(); await pullLocs(); await pullSuivi(); saveLocal();
+}
+async function pullUpdates() {
+  try {
+    const d = await sGet(`${SH_UPD}!A2:H`);
+    for (const row of (d.values || [])) {
+      const [cbi, serv, renouv, obs, by, ts, photosCol, trouve] = row;
+      if (!cbi) continue;
+      const t = ts ? new Date(ts).getTime() : 0;
+      if (!updates[cbi] || t > updates[cbi].ts) updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', by: by || '', ts: t, trouve: trouve || '' };
+    }
+  } catch(e) {}
+}
+async function pullNewItems() {
+  try {
+    const d = await sGet(`${SH_NEW}!A2:Q`);
+    for (const row of (d.values || [])) {
+      const [cbi, cbe, site, bat, etage, bureau, fam, art, qty, serv, renouv, obs, marque, modele, serie, by, ts] = row;
+      if (!cbi || [...DB, ...newItems].find(r => r.cbi === cbi)) continue;
+      newItems.push({ cbi, cbe: cbe || '', site: site || '', bat: bat || '', etage: etage || '', bureau: bureau || '', fam: fam || '', art: art || '', qty: parseInt(qty) || 1, serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', marque: marque || '', modele: modele || '', serie: serie || '', prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: by || '', _addedAt: ts ? new Date(ts).getTime() : Date.now() });
+    }
+    if ([...DB, ...newItems].some(r => r._new)) buildHier();
+  } catch(e) {}
+}
+async function pullLocs() {
+  try {
+    const d = await sGet(`${SH_LOC}!A2:H`);
+    for (const row of (d.values || [])) {
+      const [site, bat, etage, bureau] = row;
+      if (!site || !bat || !etage || !bureau) continue;
+      if (!HIER[site]) HIER[site] = {};
+      if (!HIER[site][bat]) HIER[site][bat] = {};
+      if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
+      if (!HIER[site][bat][etage].includes(bureau)) { HIER[site][bat][etage].push(bureau); HIER[site][bat][etage].sort(); }
+    }
+    const ss = document.getElementById('sel-site');
+    if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
+  } catch(e) {}
+}
+async function pullSuivi() {
+  try {
+    const d = await sGet(`${SH_SUIVI}!A2:F`);
+    for (const row of (d.values || [])) {
+      const [site, statut, by, dateDebut, dateMaj, obs] = row;
+      if (!site) continue;
+      siteStatuts[site] = { statut: statut || 'NON OUVERT', by: by || '', dateDebut: dateDebut || '', dateMaj: dateMaj || '', obs: obs || '' };
+    }
+  } catch(e) {}
+}
+async function writeUpd(cbi, u) {
+  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, ...u } }); return; }
+  try { await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '']]); } catch(e) { pendingWrites.push({ type: 'u', d: { cbi, ...u } }); }
+}
+async function writeNI(item) {
+  if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); return; }
+  try { await sAppend(SH_NEW, [[item.cbi, item.cbe, item.site, item.bat, item.etage, item.bureau, item.fam, item.art, item.qty, item.serv, item.renouv, item.obs || '', item.marque || '', item.modele || '', item.serie || '', item._addedBy, new Date(item._addedAt).toISOString()]]); } catch(e) { pendingWrites.push({ type: 'ni', d: item }); }
+}
+async function writeNL(loc) {
+  if (!gTok) { pendingWrites.push({ type: 'nl', d: loc }); return; }
+  try { await sAppend(SH_LOC, [[loc.site, loc.bat, loc.etage, loc.bureau, loc.cbe || '', loc.type || '', loc._addedBy, new Date(loc._addedAt).toISOString()]]); } catch(e) { pendingWrites.push({ type: 'nl', d: loc }); }
+}
+async function pushPending() {
+  if (!pendingWrites.length) return;
+  const upd = pendingWrites.filter(p => p.type === 'u');
+  const ni = pendingWrites.filter(p => p.type === 'ni');
+  const nl = pendingWrites.filter(p => p.type === 'nl');
+  if (upd.length) await sAppend(SH_UPD, upd.map(p => { const u = p.d; return [u.cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '']; }));
+  if (ni.length) await sAppend(SH_NEW, ni.map(p => { const r = p.d; return [r.cbi, r.cbe, r.site, r.bat, r.etage, r.bureau, r.fam, r.art, r.qty, r.serv, r.renouv, r.obs || '', r.marque || '', r.modele || '', r.serie || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+  if (nl.length) await sAppend(SH_LOC, nl.map(p => { const r = p.d; return [r.site, r.bat, r.etage, r.bureau, r.cbe || '', r.type || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+  pendingWrites = [];
+}
+
+async function loadFromSheets() {
+  if (!gTok || !gsConf.sheetId) return;
   const main = document.getElementById('main');
-  if(v === 'home') {
-    const userName = googleProfile ? (USER_NAMES[googleProfile.email.toLowerCase()] || googleProfile.name) : '';
-    main.innerHTML = `<h2>Tableau de bord</h2><p>Bonjour ${userName}</p>`;
+  if (main && !DB.length) main.innerHTML = '<div class="empty"><div class="spinner" style="width:40px;height:40px;border-width:3px;margin:0 auto 20px"></div><div>Chargement des données…</div></div>';
+  setSyncing(true, 'Chargement…');
+  try {
+    await ensureSheets();
+    const data = await sGet(`${SH_DATA}!A1:AH`);
+    const rows = data.values || [];
+    if (rows.length < 2) { showToast('Feuille "Inventaire" vide', 'warn'); setSyncing(false); return; }
+    const hdrs = rows[0];
+    const ix = h => hdrs.indexOf(h);
+    DB = rows.slice(1).map(row => ({
+      site: row[ix('SITE')] || '', bat: row[ix('BATIMENT')] || '', etage: row[ix('ETAGE')] || '', bureau: row[ix('BUREAU')] || '',
+      cbe: String(row[ix('CODE BARRE EMP')] || ''), cbi: String(row[ix('CODE BARRE IMMO')] || ''),
+      fam: row[ix('FAMILLE ARTICLE')] || '', art: row[ix('ARTICLE')] || '', qty: parseInt(row[ix('QUANTITE')]) || 1,
+      renouv: row[ix('ETAT DE RENOUVELABILITE')] || 'BON', serv: row[ix('ETAT DE SERVICE')] || 'EN SERVICE',
+      obs: row[ix('OBSERVATION')] || '', serie: row[ix('NUMERO DE SERIE')] || '', modele: row[ix('MODELE')] || '',
+      marque: row[ix('MARQUE')] || '', dir: row[ix('DIRECTION')] || row[ix('DIRECTION ')] || '',
+      patrim: row[ix('PATRIMOINE')] || '', nom_inv: row[ix('NOM INVENTORISTE')] || '', prod: ''
+    })).filter(r => r.cbi);
+    buildHier();
+    await pullAll();
+    renderDataStatus();
+    renderMain();
+    showToast(DB.length.toLocaleString('fr-FR') + ' articles chargés', 'success');
+    startAutoSync();
+    goView('home');
+  } catch(err) { showToast('Erreur: ' + err.message, 'danger'); }
+  setSyncing(false);
+}
+async function syncNow() {
+  if (!gTok || !gsConf.sheetId || isSyncing) return;
+  setSyncing(true, 'Sync…');
+  try {
+    await ensureSheets();
+    await pushPending();
+    await pullAll();
+    lastSync = Date.now();
+    renderMain();
+    renderDataStatus();
+    updateBadge('ok');
+  } catch(err) { showToast('Sync: ' + err.message, 'danger'); }
+  setSyncing(false);
+}
+function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(() => { if (gTok) syncNow(); }, 30000); }
+
+// ---------- HIERARCHY ----------
+function buildHier() {
+  HIER = {}; FAMS = {};
+  for (const r of [...DB, ...newItems]) {
+    if (!r.site) continue;
+    if (!HIER[r.site]) HIER[r.site] = {};
+    if (!HIER[r.site][r.bat]) HIER[r.site][r.bat] = {};
+    if (!HIER[r.site][r.bat][r.etage]) HIER[r.site][r.bat][r.etage] = new Set();
+    HIER[r.site][r.bat][r.etage].add(r.bureau);
+    if (r.fam && r.art) { if (!FAMS[r.fam]) FAMS[r.fam] = new Set(); FAMS[r.fam].add(r.art); }
   }
+  for (const s in HIER) for (const b in HIER[s]) for (const e in HIER[s][b]) HIER[s][b][e] = [...HIER[s][b][e]].sort();
+  for (const f in FAMS) FAMS[f] = [...FAMS[f]].sort();
+  const ss = document.getElementById('sel-site');
+  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
+}
+function getItemsAt(site, bat, etage, bureau) {
+  return [...DB, ...newItems].filter(r => !r._newLoc && (!site || r.site === site) && (!bat || r.bat === bat) && (!etage || r.etage === etage) && (!bureau || r.bureau === bureau));
+}
+function getItems() {
+  const { site, bat, etage, bureau } = curLoc;
+  if (!bureau) return [];
+  return [...DB, ...newItems].filter(r => r.site === site && r.bat === bat && r.etage === etage && r.bureau === bureau && !r._newLoc);
 }
 
-// --- INITIALISATION ---
-async function init(){
-  const hash = window.location.hash;
-  if(hash.includes('access_token')){
-    const params = new URLSearchParams(hash.substring(1));
-    const tok = params.get('access_token');
-    localStorage.setItem('google_token', tok);
-    window.location.hash = ''; 
-    
-    showAppShell();
-    await fetchGoogleProfile();
-    renderUserBadge(); // Mise à jour après réception des infos Google
-    goView('home');
+// ---------- NAVIGATION & UI ----------
+function renderUserBadge() {
+  const el = document.getElementById('user-area');
+  if (!el) return;
+  const name = googleProfile.name || currentUser || 'Utilisateur';
+  if (googleProfile.picture) {
+    el.innerHTML = `<div class="user-badge" style="padding:3px 10px 3px 4px;gap:7px"><img src="${googleProfile.picture}" style="width:26px;height:26px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"><span style="font-size:13px">${name}</span></div>`;
+  } else {
+    el.innerHTML = `<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i><span>${name}</span></div>`;
+  }
+}
+function renderDataStatus() {
+  const el = document.getElementById('data-status');
+  if (!el) return;
+  const tot = DB.length + newItems.filter(r => !r._newLoc).length;
+  const inv = Object.keys(updates).length;
+  if (!tot) { el.innerHTML = '<div class="alert alert-warn" style="margin-bottom:10px"><i class="ti ti-alert-triangle"></i>Aucune donnée</div>'; return; }
+  const gs = gTok ? ' · <i class="ti ti-cloud" style="font-size:12px"></i> Sheets' : '';
+  el.innerHTML = `<div class="alert alert-success" style="margin-bottom:10px"><i class="ti ti-database"></i><div><strong>${tot.toLocaleString('fr-FR')}</strong> articles${gs}<br><span style="font-size:12px">${inv} inventoriés</span></div></div>`;
+}
+function goView(view) {
+  currentView = view;
+  ['home', 'inventory', 'locations', 'articles', 'progress'].forEach(v => {
+    const el = document.getElementById('nav-' + v);
+    if (el) el.className = 'nav-item' + (v === view ? ' active' : '');
+  });
+  const sidebar = document.getElementById('sidebar');
+  if (view === 'home') {
+    sidebar.style.display = 'none';
+    renderHome();
+  } else if (view === 'inventory') {
+    sidebar.style.display = 'flex';
+    renderMain();
+  } else if (view === 'locations') {
+    sidebar.style.display = 'none';
+    renderLocationsView();
+  } else if (view === 'articles') {
+    sidebar.style.display = 'none';
+    renderArticlesView();
+  } else if (view === 'progress') {
+    sidebar.style.display = 'none';
+    drillState = { site: null, bat: null, etage: null };
+    renderDashboard();
+  }
+}
+function goViewData(el) { goView(el.dataset.view); }
+function renderHome() {
+  const main = document.getElementById('main');
+  const tot = DB.length + newItems.filter(r => !r._newLoc).length;
+  const inv = Object.keys(updates).length;
+  const pct = tot ? Math.round(inv / tot * 100) : 0;
+  const name = googleProfile.name || currentUser || '';
+  main.innerHTML = `<div style="padding:8px 0 20px;max-width:480px;margin:0 auto">
+    <div style="margin-bottom:20px"><div style="font-size:22px;font-weight:800">Bonjour${name ? ' ' + name.split(' ')[0] : ''} 👋</div><div style="font-size:14px;color:var(--text2);margin-top:4px">Inventaire Immobilisations</div></div>
+    ${tot ? `<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:20px;font-weight:800;color:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--info-txt)'}">${pct}%</div></div><div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div><div style="font-size:12px;color:var(--text2);margin-top:8px">${inv.toLocaleString('fr-FR')} / ${tot.toLocaleString('fr-FR')} articles inventoriés</div></div>` : '<div class="alert alert-warn" style="margin-bottom:20px"><i class="ti ti-alert-triangle"></i>Aucune donnée chargée — connexion Google Sheets en cours…</div>'}
+    <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l’inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button><button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button><button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button></div>
+  </div>`;
+}
+function renderMain() {
+  const main = document.getElementById('main');
+  if (!curLoc.bureau) {
+    if (!DB.length) {
+      main.innerHTML = `<div class="empty"><i class="ti ti-building-warehouse"></i><div style="font-size:18px;font-weight:700;margin-bottom:10px">Inventaire Immobilisations</div><div style="font-size:14px;max-width:320px;margin:0 auto 24px;line-height:1.7;color:var(--text2)">Connectez Google Sheets ou chargez un fichier Excel, puis sélectionnez un emplacement pour commencer.</div><div style="display:flex;flex-direction:column;gap:10px;align-items:center"><button class="btn btn-primary" onclick="openGsPanel()" style="min-width:220px"><i class="ti ti-brand-google"></i> Connecter Google Sheets</button><button class="btn" onclick="document.getElementById('file-inp').click()" style="min-width:220px"><i class="ti ti-upload"></i> Charger Excel local</button></div></div>`;
+      return;
+    }
+    if (currentView === 'progress') { renderDashboard(); } else { renderHome(); }
     return;
   }
+  const items = getItems();
+  const inv = items.filter(r => updates[r.cbi]);
+  const pct = items.length ? Math.round(inv.length / items.length * 100) : 0;
+  document.getElementById('loc-stats').style.display = 'block';
+  document.getElementById('loc-count').textContent = `${items.length} article(s)`;
+  document.getElementById('loc-pbar').style.width = pct + '%';
+  document.getElementById('loc-lbl').textContent = `${inv.length}/${items.length} inventoriés (${pct}%)`;
+  const enS = items.filter(r => (updates[r.cbi]?.serv || r.serv) === 'EN SERVICE').length;
+  const horS = items.length - enS;
+  main.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:700">${curLoc.bureau}</div><div style="font-size:13px;color:var(--text2);margin-top:3px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage}</div></div><button class="btn btn-primary btn-sm" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter article</button></div>
+    <div class="stats-row"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${items.length}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.length}</div></div><div class="stat-card"><div class="stat-lbl">En service</div><div class="stat-val">${enS}</div></div><div class="stat-card"><div class="stat-lbl">Hors service</div><div class="stat-val" style="color:var(--danger-txt)">${horS}</div></div></div>
+    <div class="scan-zone"><i class="ti ti-scan"></i><input type="text" id="scan-inp" placeholder="Scanner code barre article puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none"><span class="scan-hint">↵</span></div>
+    <div class="search-row"><input type="text" id="srch" placeholder="Rechercher…" oninput="renderTable()" style="margin:0"><select id="filt" onchange="renderTable()" style="margin:0"><option value="">Tous états</option>${ES.map(x => `<option value="${x}">${x}</option>`).join('')}<option value="__ni">Non inventorié</option></select></div>
+    <div id="twrap"></div>`;
+  renderTable();
+  setTimeout(() => document.getElementById('scan-inp')?.focus(), 100);
+}
+function renderTable() {
+  const items = getItems();
+  const srch = (document.getElementById('srch')?.value || '').toLowerCase();
+  const filt = document.getElementById('filt')?.value || '';
+  const f = items.filter(r => {
+    if (srch && ![r.cbi, r.cbe, (r.art || '').toLowerCase()].some(x => x.includes(srch))) return false;
+    if (filt === '__ni') return !updates[r.cbi];
+    if (filt && (updates[r.cbi]?.serv || r.serv) !== filt) return false;
+    return true;
+  });
+  const tw = document.getElementById('twrap');
+  if (!tw) return;
+  if (!f.length) { tw.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article</div>'; return; }
+  tw.innerHTML = `<div class="table-wrap"><div class="t-head"><div class="col-cbi">Code barre</div><div>Article</div><div>État</div><div></div></div>
+    ${f.map(r => {
+      const u = updates[r.cbi] || {};
+      const sv = u.serv || r.serv;
+      const ok = !!updates[r.cbi];
+      const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
+      const tr = u.trouve || '';
+      const trBadge = tr === 'OUI' ? '<span style="font-size:11px;color:var(--success-txt);font-weight:700">✓</span>' : tr === 'NON' ? '<span style="font-size:11px;color:var(--danger-txt);font-weight:700">✗</span>' : '';
+      return `<div class="t-row${ok ? ' inventoried' : ''}" onclick="openEditItem_cbi('${r.cbi}')"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}${r._new ? ` <span class="badge b-new" style="font-size:10px">Nouveau</span>` : ''}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div><div style="font-size:12px;color:var(--text3)">${r.fam}${trBadge ? ' · ' + trBadge : ''}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok ? '<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>' : '<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi] || []).length ? '<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>' : ''}</div></div>`;
+    }).join('')}
+  </div>`;
+}
 
-  const existingTok = localStorage.getItem('google_token');
-  if(existingTok) {
-    showAppShell();
-    await fetchGoogleProfile();
-    renderUserBadge();
-    goView('home');
+// ---------- LOCATIONS VIEW (onglet Emplacements) ----------
+function renderLocationsView() {
+  const main = document.getElementById('main');
+  const sites = Object.keys(HIER).sort();
+  if (!sites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
+  let html = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Emplacements</div><button class="btn btn-sm btn-primary" onclick="openAddLocation()"><i class="ti ti-plus"></i> Ajouter</button></div>`;
+  sites.forEach(site => {
+    const bats = Object.keys(HIER[site] || {}).sort();
+    const siteItems = getItemsAt(site, null, null, null);
+    const siteInv = siteItems.filter(r => updates[r.cbi]).length;
+    const sitePct = siteItems.length ? Math.round(siteInv / siteItems.length * 100) : 0;
+    const st = siteStatuts[site] || { statut: 'NON OUVERT' };
+    const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
+    html += `<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden"><div style="padding:14px;display:flex;align-items:center;gap:10px;cursor:pointer" data-open="0" onclick="toggleLocCard(this)"><i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i><div style="flex:1"><div style="font-size:15px;font-weight:700">${site}</div><div style="font-size:12px;color:var(--text2)">${bats.length} bâtiment(s) · ${siteItems.length} articles</div></div><span style="font-size:12px;font-weight:600;color:${stColor}">${st.statut}</span><span style="font-size:14px;font-weight:700;margin-left:8px">${sitePct}%</span><i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3)"></i></div><div style="display:none;border-top:0.5px solid var(--border)">`;
+    bats.forEach(bat => {
+      const etages = Object.keys((HIER[site] || {})[bat] || {}).sort();
+      html += `<div style="padding:10px 14px 10px 36px;border-bottom:0.5px solid var(--border)"><div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}</div>`;
+      etages.forEach(etage => {
+        const bureaux = ((HIER[site] || {})[bat] || {})[etage] || [];
+        html += `<div style="margin-left:16px;margin-bottom:6px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">${etage}</div>`;
+        bureaux.forEach(bureau => {
+          const items = getItemsAt(site, bat, etage, bureau);
+          const invC = items.filter(r => updates[r.cbi]).length;
+          const pct = items.length ? Math.round(invC / items.length * 100) : 0;
+          const pctColor = pct === 100 ? 'var(--success-txt)' : pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+          html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;border-bottom:0.5px solid var(--border)" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)"><i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i><div style="flex:1;font-size:13px">${bureau}</div><span style="font-size:12px;font-weight:600;color:${pctColor}">${pct}%</span><span style="font-size:11px;color:var(--text3)">${invC}/${items.length}</span><i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i></div>`;
+        });
+        html += `</div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+  });
+  main.innerHTML = html;
+}
+function toggleLocCard(el) {
+  const div = el.nextElementSibling;
+  if (div) div.style.display = div.style.display === 'none' ? '' : 'none';
+}
+function goToInventory(el) {
+  navigateTo(el.dataset.site, el.dataset.bat, el.dataset.etage, el.dataset.bureau);
+  goView('inventory');
+}
+
+// ---------- ARTICLES VIEW ----------
+function renderArticlesView() {
+  const main = document.getElementById('main');
+  const all = [...DB, ...newItems].filter(r => !r._newLoc);
+  main.innerHTML = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Articles (${all.length.toLocaleString('fr-FR')})</div><button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button></div>
+    <div class="search-row" style="margin-bottom:14px"><input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="filterArticlesView()" style="margin:0;flex:1"><select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px"><option value="">Tous</option><option value="__inv">Inventoriés</option><option value="__non">Non inventoriés</option><option value="OUI">Trouvés</option><option value="NON">Non trouvés</option></select></div>
+    <div id="art-list"></div>`;
+  filterArticlesView();
+}
+function filterArticlesView() {
+  const all = [...DB, ...newItems].filter(r => !r._newLoc);
+  const srch = (document.getElementById('art-srch')?.value || '').toLowerCase();
+  const filt = (document.getElementById('art-filt')?.value || '');
+  let filtered = all.filter(r => {
+    if (srch && ![r.cbi, r.cbe, (r.art || '').toLowerCase(), (r.fam || '').toLowerCase()].some(x => x.includes(srch))) return false;
+    if (filt === '__inv') return !!updates[r.cbi];
+    if (filt === '__non') return !updates[r.cbi];
+    if (filt === 'OUI' || filt === 'NON') return (updates[r.cbi]?.trouve || '') === filt;
+    return true;
+  });
+  const total = filtered.length;
+  filtered = filtered.slice(0, 100);
+  const el = document.getElementById('art-list');
+  if (!el) return;
+  if (!filtered.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article</div>'; return; }
+  el.innerHTML = `<div class="table-wrap"><div class="t-head"><div class="col-cbi">Code barre</div><div>Article</div><div>État</div><div></div></div>${filtered.map(r => {
+    const u = updates[r.cbi] || {};
+    const sv = u.serv || r.serv;
+    const ok = !!updates[r.cbi];
+    const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
+    return `<div class="t-row${ok ? ' inventoried' : ''}" data-cbi="${r.cbi}" onclick="openEditItem_cbi(this.dataset.cbi)"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div><div style="font-size:11px;color:var(--text3)">${r.fam} · ${r.bureau}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center">${ok ? '<i class="ti ti-check" style="color:var(--success-txt)"></i>' : ''}</div></div>`;
+  }).join('')}</div>${total > 100 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text2)">${total} résultats — affichage limité à 100. Affinez la recherche.</div>` : ''}`;
+}
+
+// ---------- DASHBOARD PROGRESS ----------
+function renderDashboard() {
+  const main = document.getElementById('main');
+  const tot = DB.length + newItems.filter(r => !r._newLoc).length;
+  const inv = Object.keys(updates).length;
+  const pct = tot ? Math.round(inv / tot * 100) : 0;
+  const synInfo = lastSync ? `Sync: ${new Date(lastSync).toLocaleTimeString('fr-FR')}` : (gTok ? 'Connecté' : 'Non connecté');
+  const _s = drillState.site, _b = drillState.bat, _e = drillState.etage;
+  let breadcrumb = '<span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo(null,null,null)">Tous les sites</span>';
+  if (_s) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo('${_s}',null,null)">${_s}</span>`;
+  if (_b) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo('${_s}','${_b}',null)">${_b}</span>`;
+  if (_e) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="color:var(--text)">${_e}</span>`;
+  main.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:700;margin-bottom:3px">Avancement</div><div style="font-size:12px;color:var(--text2)">${synInfo}</div></div>${gTok ? '<button class="btn btn-sm" onclick="syncNow()"><i class="ti ti-refresh"></i></button>' : '<button class="btn btn-sm" onclick="openGsPanel()"><i class="ti ti-brand-google"></i></button>'}</div>
+    <div class="stats-row" style="margin-bottom:14px"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Restant</div><div class="stat-val" style="color:var(--text2)">${(tot - inv).toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Global</div><div class="stat-val">${pct}%</div></div></div>
+    <div class="pbar" style="height:10px;border-radius:5px;margin-bottom:18px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div>
+    <div style="font-size:13px;margin-bottom:12px;padding:8px 12px;background:var(--bg2);border-radius:var(--radius);display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-map-pin" style="font-size:14px;color:var(--text3)"></i>${breadcrumb}</div>
+    <div id="hier-view"></div>
+    ${!drillState.site ? renderByUser() : ''}`;
+  renderHierView();
+}
+function renderHierView() {
+  const el = document.getElementById('hier-view');
+  if (!el) return;
+  const { site, bat, etage } = drillState;
+  let html = '';
+  if (!site) {
+    html = Object.keys(HIER).sort().map(s => {
+      const items = getItemsAt(s, null, null, null);
+      const st = siteStatuts[s] || { statut: 'NON OUVERT' };
+      const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
+      return makeProgressRow(s, items, `drillTo('${s}',null,null)`, `<span style="color:${stColor};font-weight:600">${st.statut}</span>`, false);
+    }).join('');
+  } else if (!bat) {
+    html = Object.keys(HIER[site] || {}).sort().map(b => {
+      const items = getItemsAt(site, b, null, null);
+      return makeProgressRow(b, items, `drillTo('${site}','${b}',null)`, items.length + ' articles', false);
+    }).join('');
+  } else if (!etage) {
+    html = Object.keys((HIER[site] || {})[bat] || {}).sort().map(e => {
+      const items = getItemsAt(site, bat, e, null);
+      const bx = ((HIER[site] || {})[bat] || {})[e] || [];
+      return makeProgressRow(e, items, `drillTo('${site}','${bat}','${e}')`, bx.length + ' bureau(x) · ' + items.length + ' articles', false);
+    }).join('');
+  } else {
+    html = (((HIER[site] || {})[bat] || {})[etage] || []).sort().map(b => {
+      const items = getItemsAt(site, bat, etage, b);
+      const navBtn = items.length ? `<div style="margin:-8px 0 8px;padding:0 14px 10px"><button class="btn btn-sm" style="margin-top:8px;width:100%" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${b}" onclick="navFromDash(this)"><i class="ti ti-arrow-right"></i> Aller à ce bureau</button></div>` : '';
+      return makeProgressRow(b, items, '', items.length + ' article(s)', true) + navBtn;
+    }).join('');
   }
+  el.innerHTML = html || '<div style="text-align:center;padding:30px;color:var(--text2)">Aucun emplacement</div>';
+}
+function makeProgressRow(label, items, onclick, sublabel, isLeaf) {
+  if (!items.length) return '';
+  const inv = items.filter(r => updates[r.cbi]).length;
+  const pct = Math.round(inv / items.length * 100);
+  const trouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
+  const nonTrouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
+  const horsSrv = items.filter(r => (updates[r.cbi]?.serv || r.serv) !== 'EN SERVICE').length;
+  const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--info-txt)';
+  return `<div class="hier-row${!isLeaf ? ' clickable' : ''}" ${!isLeaf ? `onclick="${onclick}"` : ''}><div class="hier-row-top"><div class="hier-row-label">${!isLeaf ? '<i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>' : '<i class="ti ti-door" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>'}<div><div style="font-size:14px;font-weight:600">${label}</div>${sublabel ? `<div style="font-size:11px;color:var(--text3)">${sublabel}</div>` : ''}</div></div><div class="hier-row-stats"><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:${barColor}">${pct}%</div><div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div></div>${isLeaf ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:80px">${trouve ? `<span style="font-size:11px;color:var(--success-txt)">✓ Trouvés: ${trouve}</span>` : ''}${nonTrouve ? `<span style="font-size:11px;color:var(--danger-txt)">✗ Non trouvés: ${nonTrouve}</span>` : ''}${horsSrv ? `<span style="font-size:11px;color:var(--warn-txt)">⚠ Hors service: ${horsSrv}</span>` : ''}</div>` : ''}</div></div><div style="margin-top:8px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div></div>${isLeaf && items.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${items.slice(0, 8).map(r => { const ok = !!updates[r.cbi]; const sv = updates[r.cbi]?.serv || r.serv; const dot = ok ? (sv === 'EN SERVICE' ? 'var(--success-txt)' : 'var(--warn-txt)') : 'var(--border2)'; return `<div title="${r.art}" style="width:10px;height:10px;border-radius:50%;background:${dot};flex-shrink:0"></div>`; }).join('')}${items.length > 8 ? `<span style="font-size:10px;color:var(--text3)">+${items.length - 8}</span>` : ''}</div>` : ''}</div>`;
+}
+function renderByUser() {
+  const byU = {};
+  for (const cbi in updates) { const u = updates[cbi]; byU[u.by] = (byU[u.by] || 0) + 1; }
+  if (!Object.keys(byU).length) return '';
+  const mx = Math.max(...Object.values(byU), 1);
+  return `<div style="margin-top:16px"><div style="font-size:14px;font-weight:700;margin-bottom:10px">Par inventoriste</div><div class="dash-card">${Object.entries(byU).sort((a, b) => b[1] - a[1]).map(([n, cnt]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:14px"><div>${n}</div><div style="display:flex;align-items:center;gap:8px"><div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.round(cnt / mx * 100)}%"></div></div><strong style="min-width:28px;text-align:right">${cnt}</strong></div></div>`).join('')}</div></div>`;
+}
+function drillTo(site, bat, etage) { drillState = { site, bat, etage }; renderDashboard(); }
+function navFromDash(btn) { navigateTo(btn.dataset.site, btn.dataset.bat, btn.dataset.etage, btn.dataset.bureau); goView('inventory'); }
+
+// ---------- SIDEBAR & LOCATION NAVIGATION ----------
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('open'); }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); }
+function onSiteChange() {
+  const s = document.getElementById('sel-site').value;
+  curLoc = { site: s, bat: '', etage: '', bureau: '' };
+  const bb = document.getElementById('sel-bat');
+  bb.innerHTML = '<option value="">-- Bâtiment --</option>';
+  bb.disabled = !s;
+  if (s && HIER[s]) Object.keys(HIER[s]).sort().forEach(b => bb.innerHTML += `<option value="${b}">${b}</option>`);
+  document.getElementById('sel-etage').innerHTML = '<option value="">-- Étage --</option>';
+  document.getElementById('sel-etage').disabled = true;
+  document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
+  document.getElementById('sel-bureau').disabled = true;
+  document.getElementById('loc-stats').style.display = 'none';
+  renderMain();
+}
+function onBatChange() {
+  const s = curLoc.site, b = document.getElementById('sel-bat').value;
+  curLoc.bat = b; curLoc.etage = ''; curLoc.bureau = '';
+  const ee = document.getElementById('sel-etage');
+  ee.innerHTML = '<option value="">-- Étage --</option>';
+  ee.disabled = !b;
+  if (b && HIER[s] && HIER[s][b]) Object.keys(HIER[s][b]).sort().forEach(e => ee.innerHTML += `<option value="${e}">${e}</option>`);
+  document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
+  document.getElementById('sel-bureau').disabled = true;
+  document.getElementById('loc-stats').style.display = 'none';
+  renderMain();
+}
+function onEtageChange() {
+  const s = curLoc.site, b = curLoc.bat, e = document.getElementById('sel-etage').value;
+  curLoc.etage = e; curLoc.bureau = '';
+  const bu = document.getElementById('sel-bureau');
+  bu.innerHTML = '<option value="">-- Bureau --</option>';
+  bu.disabled = !e;
+  if (e && HIER[s] && HIER[s][b] && HIER[s][b][e]) HIER[s][b][e].forEach(br => bu.innerHTML += `<option value="${br}">${br}</option>`);
+  document.getElementById('loc-stats').style.display = 'none';
+  renderMain();
+}
+function onBureauChange() {
+  curLoc.bureau = document.getElementById('sel-bureau').value;
+  closeSidebar();
+  renderMain();
+}
+function onLocScanKey(e) {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  e.target.value = '';
+  if (!v) return;
+  if (!DB.length) { showLocFb('Chargez d\'abord les données', 'warn'); return; }
+  const found = [...DB, ...newItems].find(r => r.cbe === v);
+  if (!found) { showLocFb(`"${v}" introuvable`, 'warn'); return; }
+  navigateTo(found.site, found.bat, found.etage, found.bureau);
+  showLocFb('✓ ' + found.bureau, 'success');
+  closeSidebar();
+}
+function navigateTo(site, bat, etage, bureau) {
+  document.getElementById('sel-site').value = site;
+  curLoc = { site, bat: '', etage: '', bureau: '' };
+  const bb = document.getElementById('sel-bat');
+  bb.innerHTML = '<option value="">-- Bâtiment --</option>';
+  bb.disabled = false;
+  if (HIER[site]) Object.keys(HIER[site]).sort().forEach(b => bb.innerHTML += `<option value="${b}">${b}</option>`);
+  bb.value = bat; curLoc.bat = bat;
+  const ee = document.getElementById('sel-etage');
+  ee.innerHTML = '<option value="">-- Étage --</option>';
+  ee.disabled = false;
+  if (HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${e}">${e}</option>`);
+  ee.value = etage; curLoc.etage = etage;
+  const bu = document.getElementById('sel-bureau');
+  bu.innerHTML = '<option value="">-- Bureau --</option>';
+  bu.disabled = false;
+  if (HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(br => bu.innerHTML += `<option value="${br}">${br}</option>`);
+  bu.value = bureau; curLoc.bureau = bureau;
+  renderMain();
+}
+function showLocFb(msg, type) {
+  const el = document.getElementById('loc-feedback');
+  if (!el) return;
+  const bg = { success: 'var(--success-bg)', warn: 'var(--warn-bg)', info: 'var(--info-bg)', danger: 'var(--danger-bg)' };
+  const tc = { success: 'var(--success-txt)', warn: 'var(--warn-txt)', info: 'var(--info-txt)', danger: 'var(--danger-txt)' };
+  el.style.cssText = `display:block;font-size:12px;margin-bottom:8px;padding:6px 10px;border-radius:6px;background:${bg[type]};color:${tc[type]}`;
+  el.textContent = msg;
+  clearTimeout(window.lfT);
+  window.lfT = setTimeout(() => el.style.display = 'none', 3500);
 }
 
-function logout() {
-  localStorage.removeItem('google_token');
-  window.location.reload();
+// ---------- EDIT/ADD ITEMS ----------
+function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi === cbi); if (i) openEditItem(i); }
+function openEditItem(item) {
+  const u = updates[item.cbi] || {};
+  const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+}
+async function saveUpd(cbi) {
+  const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
+  const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
+  updates[cbi] = u;
+  saveLocal();
+  closeModal();
+  renderMain();
+  renderDataStatus();
+  showToast('✓ Article mis à jour', 'success');
+  await writeUpd(cbi, u);
+}
+function openAddItem() {
+  const fams = Object.keys(FAMS).sort();
+  if (!fams.length) { showToast("Chargez d'abord les données", 'warn'); return; }
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}<div class="form-row"><div class="form-group"><label class="form-label">Code barre IMMO *</label><input type="text" id="n-cbi" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)"><div id="n-cbi-msg" style="display:none"></div></div><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="n-cbe" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)"><div id="n-cbe-msg" style="display:none"></div></div></div><div class="form-row"><div class="form-group"><label class="form-label">Famille *</label><select id="n-fam" onchange="nFamChange()">${Object.keys(FAMS).sort().map(f => `<option>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div></div><div class="form-row"><div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div><div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div></div><div class="form-row"><div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div><div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="n-sv">${ES.map(x => `<option>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button></div></div>`);
+  nFamChange();
+}
+function nFamChange() { const f = document.getElementById('n-fam').value; document.getElementById('n-art').innerHTML = (FAMS[f] || []).map(a => `<option>${a}</option>`).join(''); }
+function checkCbiField(inp) { const cbi = inp.value.trim(); const msg = document.getElementById('n-cbi-msg'); if (!cbi || !msg) return; const exist = [...DB, ...newItems].find(r => r.cbi === cbi); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà existant : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
+function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = [...DB, ...newItems].find(r => r.cbe === cbe); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà attribué : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
+async function saveNew() {
+  const cbi = document.getElementById('n-cbi').value.trim();
+  const cbe = document.getElementById('n-cbe').value.trim();
+  if (!cbi) { showToast('Code barre IMMO requis', 'warn'); return; }
+  const existCbi = [...DB, ...newItems].find(r => r.cbi === cbi);
+  if (existCbi) { showDoublonModal('cbi', existCbi); return; }
+  if (cbe) { const existCbe = [...DB, ...newItems].find(r => r.cbe === cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
+  const item = { ...curLoc, cbi, cbe, fam: document.getElementById('n-fam').value, art: document.getElementById('n-art').value, marque: document.getElementById('n-marque').value, modele: document.getElementById('n-modele').value, serie: document.getElementById('n-serie').value, qty: parseInt(document.getElementById('n-qty').value) || 1, serv: document.getElementById('n-sv').value, renouv: document.getElementById('n-rv').value, obs: document.getElementById('n-obs').value, prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: currentUser, _addedAt: Date.now() };
+  newItems.push(item);
+  updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
+  saveLocal();
+  closeModal();
+  renderMain();
+  renderDataStatus();
+  showToast('Article ajouté', 'success');
+  await writeNI(item);
+  await writeUpd(cbi, updates[cbi]);
+}
+function showDoublonModal(type, existing) {
+  const loc = [existing.site, existing.bat, existing.etage, existing.bureau].filter(Boolean).join(' › ');
+  const msg = type === 'cbi' ? `Code barre IMMO <strong>${existing.cbi}</strong> déjà existant.` : `Code barre EMP <strong>${existing.cbe}</strong> déjà attribué.`;
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2 style="color:var(--danger-txt)"><i class="ti ti-alert-circle"></i> Doublon</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-danger"><i class="ti ti-alert-circle"></i>${msg}</div><div class="item-box"><div style="font-size:15px;font-weight:700">${existing.art}</div><div style="font-size:13px;color:var(--text2)">${existing.fam}</div><div><span class="tag">CBI: ${existing.cbi}</span>${existing.cbe ? `<span class="tag">CBE: ${existing.cbe}</span>` : ''}</div><div style="margin-top:8px;padding:8px;background:var(--info-bg);border-radius:var(--radius);font-size:13px"><i class="ti ti-map-pin"></i> ${loc}</div>${updates[existing.cbi] ? `<div style="margin-top:6px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> Déjà inventorié par ${updates[existing.cbi].by}</div>` : '<div style="margin-top:6px;font-size:12px;color:var(--warn-txt)"><i class="ti ti-clock"></i> Non encore inventorié</div>'}</div><div class="modal-actions"><button class="btn btn-primary" onclick="closeModal();openEditItem_cbi('${existing.cbi}')"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn" onclick="closeModal()">Fermer</button></div></div>`);
 }
 
-window.onload = init;
+// ---------- PHOTOS (simplifié) ----------
+function renderPhotoSection(cbi) {
+  const list = photos[cbi] || [];
+  const thumbs = list.map((p, i) => `<div style="position:relative;display:inline-block;margin:4px"><a href="${p.viewUrl}" target="_blank"><img src="${p.thumbUrl}" alt="photo" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)"></a><button onclick="deletePhoto('${cbi}',${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px">✕</button></div>`).join('');
+  return `<div class="form-group" id="photo-section-${cbi}"><label class="form-label"><i class="ti ti-camera"></i> Photos (${list.length})</label><div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs || '<div style="font-size:12px;color:var(--text3)">Aucune photo</div>'}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label>${!gTok ? '<div style="font-size:11px;color:var(--warn-txt)"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>' : ''}</div></div>`;
+}
+async function handlePhotoCapture(event, cbi) { const files = [...event.target.files]; if (!files.length) return; if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; } showToast(`Upload de ${files.length} photo(s)…`, 'info'); try { if (!photos[cbi]) photos[cbi] = []; for (let i = 0; i < files.length; i++) { const result = await uploadPhotoToDrive(files[i], cbi, i + 1); photos[cbi].push(result); } savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photos uploadées', 'success'); } catch(err) { showToast('Erreur upload: ' + err.message, 'danger'); } event.target.value = ''; }
+async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) return; const p = photos[cbi] && photos[cbi][idx]; if (p && gTok && p.id) { try { await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${gTok}` } }); } catch(e) {} } photos[cbi].splice(idx, 1); if (!photos[cbi].length) delete photos[cbi]; savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photo supprimée', 'success'); }
+async function ensureDriveFolder() { if (driveFolderId) return driveFolderId; const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`); const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers: { Authorization: `Bearer ${gTok}` } }); if (!r.ok) throw new Error('Drive API inaccessible'); const data = await r.json(); if (data.files && data.files.length) { driveFolderId = data.files[0].id; return driveFolderId; } const cr = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }) }); if (!cr.ok) throw new Error('Impossible de créer le dossier'); const fd = await cr.json(); driveFolderId = fd.id; await fetch(`https://www.googleapis.com/drive/v3/files/${driveFolderId}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return driveFolderId; }
+async function uploadPhotoToDrive(file, cbi, photoIndex) { const folderId = await ensureDriveFolder(); const ext = file.name.split('.').pop() || 'jpg'; const fname = `${cbi}_${photoIndex}_${Date.now()}.${ext}`; const compressed = await compressImage(file, 1200, 0.82); const boundary = 'inv_boundary_' + Date.now(); const meta = JSON.stringify({ name: fname, parents: [folderId] }); const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${compressed.type}\r\n\r\n`; const bodyEnd = `\r\n--${boundary}--`; const blob = new Blob([body, compressed, bodyEnd]); const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: blob }); if (!r.ok) throw new Error('Erreur upload photo'); const fd = await r.json(); await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return { id: fd.id, viewUrl: `https://drive.google.com/file/d/${fd.id}/view`, thumbUrl: `https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`, name: fname }; }
+function compressImage(file, maxW, quality) { return new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { URL.revokeObjectURL(url); const canvas = document.createElement('canvas'); let w = img.width, h = img.height; if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; } canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h); canvas.toBlob(b => res(b), 'image/jpeg', quality); }; img.onerror = rej; img.src = url; }); }
+async function updatePhotosInSheet(cbi) { if (!gTok || !gsConf.sheetId) return; const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n'); try { const d = await sGet(`${SH_UPD}!A2:G`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === cbi); if (idx >= 0) { await sPut(`${SH_UPD}!G${idx + 2}`, [[links]]); } else { const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() }; await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), links, u.trouve || '']]); } } catch(e) { console.error('Photo sheet update error', e); } }
+
+// ---------- AUTRES FONCTIONS (export, reset, suivi, scan libre) ----------
+function openExport() { const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
+function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = [...DB, ...newItems].find(r => r.cbi === cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
+function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
+function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
+function resetUpdates() { if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
+function openSuiviPanel() { if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } const sites = Object.keys(HIER).sort(); const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length; const totInv = Object.keys(updates).length; const totPct = totAll ? Math.round(totInv / totAll * 100) : 0; const rows = sites.map(site => { const allItems = [...DB, ...newItems].filter(r => r.site === site && !r._newLoc); const inv = allItems.filter(r => updates[r.cbi]).length; const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0; const st = siteStatuts[site] || { statut: 'NON OUVERT' }; const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)'; const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no'; const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join(''); return `<div class="site-card"><div class="statut-dot ${dotCls}"></div><div style="flex:1"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div><div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div><div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}</div><div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div></div>`; }).join(''); showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2><div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div></div><div class="modal-body"><div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:20px;font-weight:700">${totPct}%</div></div><div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div><div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div></div><div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px"><span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span><span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span><span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span></div>${rows}<div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)"><button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button></div></div>`); }
+function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
+async function changeSiteStatut(site, statut) { await writeSuivi(site, statut, ''); openSuiviPanel(); renderMain(); showToast(site + ' → ' + statut, 'success'); }
+async function writeSuivi(site, statut, obs) { if (!gTok || !gsConf.sheetId) return; const now = new Date().toLocaleDateString('fr-FR'); const prev = siteStatuts[site] || {}; const dateDebut = prev.dateDebut || now; siteStatuts[site] = { statut, by: currentUser, dateDebut, dateMaj: now, obs: obs || prev.obs || '' }; saveLocal(); try { const d = await sGet(`${SH_SUIVI}!A2:A`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === site); const row = [site, statut, currentUser, dateDebut, now, obs || prev.obs || '']; if (idx >= 0) { await sPut(`${SH_SUIVI}!A${idx + 2}:F${idx + 2}`, [row]); } else { await sAppend(SH_SUIVI, [row]); } } catch(e) { console.error('Suivi write error', e); } }
+async function generateExportFinal() { if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } showToast('Génération export final…', 'info'); try { await ensureSheets(); const all = [...DB, ...newItems.filter(r => !r._newLoc)]; const rows = all.map(r => { const u = updates[r.cbi] || {}; const photoLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return [r.site, r.bat, r.etage, r.bureau, r.cbe, r.cbi, r.fam, r.art, r.qty, u.serv || r.serv, u.renouv || r.renouv, u.obs !== undefined ? u.obs : (r.obs || ''), u.trouve || '', r.serie || '', r.modele || '', r.marque || '', r.dir || '', r.patrim || '', u.by || r.nom_inv || '', u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', r._new ? 'OUI' : 'NON', photoLinks]; }); await sPut(`${SH_EXPORT}!A2:W2`, [['']]); for (let i = 0; i < rows.length; i += 500) { await sPut(`${SH_EXPORT}!A${i + 2}:W${i + rows.slice(i, i + 500).length + 1}`, rows.slice(i, i + 500)); } showToast(`Export final généré : ${rows.length} lignes dans la feuille "${SH_EXPORT}"`, 'success'); } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); } }
+function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
+function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
+function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${u.by}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${item.cbi}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${item.site}" data-bat="${item.bat}" data-etage="${item.etage}" data-bureau="${item.bureau}" onclick="navFromDash(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`; }
+function openEditFromScanLibre(cbi) { const item = [...DB, ...newItems].find(r => r.cbi === cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
+
+// ---------- EXCEL LOCAL ----------
+function loadExcel(inp) { const f = inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = e => { try { const wb = XLSX.read(e.target.result, { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json(ws, { defval: null }); DB = rows.map(r => ({ site: r['SITE'] || '', bat: r['BATIMENT'] || '', etage: r['ETAGE'] || '', bureau: r['BUREAU'] || '', cbe: String(r['CODE BARRE EMP'] || ''), cbi: String(r['CODE BARRE IMMO'] || ''), fam: r['FAMILLE ARTICLE'] || '', art: r['ARTICLE'] || '', qty: r['QUANTITE'] || 1, renouv: r['ETAT DE RENOUVELABILITE'] || 'BON', serv: r['ETAT DE SERVICE'] || 'EN SERVICE', obs: r['OBSERVATION'] || '', serie: r['NUMERO DE SERIE'] || '', modele: r['MODELE'] || '', marque: r['MARQUE'] || '', dir: r['DIRECTION'] || '', patrim: r['PATRIMOINE'] || '', nom_inv: r['NOM INVENTORISTE'] || '', prod: '' })).filter(r => r.cbi); buildHier(); renderDataStatus(); renderMain(); showToast(`${DB.length.toLocaleString()} articles chargés`, 'success'); } catch(err) { showToast('Erreur: ' + err.message, 'danger'); } }; r.readAsArrayBuffer(f); inp.value = ''; }
+
+// ---------- GOOGLE PANEL & LOGIN ----------
+function openGsPanel() { const _origin = window.location.origin; const _redirect = window.location.href.replace(/#.*/, '').replace(/\?.*/, ''); const _email = getStoredEmail(); const _remaining = gTok ? Math.max(0, Math.round((gTokExpiry - Date.now()) / 60000)) : 0; const _connectedHtml = gTok ? `<div class="alert alert-success" style="flex-wrap:wrap;gap:6px"><i class="ti ti-cloud-check"></i><div><strong>${_email || 'Connecté'}</strong><br><span style="font-size:12px">Session valide encore ~${_remaining} min · renouvellement automatique</span></div><button class="btn btn-sm" style="margin-left:auto;color:var(--danger-txt)" onclick="disconnectGoogle()"><i class="ti ti-logout"></i></button></div>` : ''; const _loadBtn = gTok ? '<button class="btn btn-primary" onclick="saveAndLoad()"><i class="ti ti-cloud-download"></i> Charger depuis Sheets</button>' : ''; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-brand-google"></i> Google Sheets</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${_connectedHtml}<details open style="margin-bottom:16px"><summary style="font-size:14px;font-weight:600;cursor:pointer;padding:8px 0;list-style:none;display:flex;align-items:center;gap:8px"><i class="ti ti-help-circle"></i> Guide de configuration</summary><div style="margin-top:12px"><div class="setup-step"><div class="step-n">1</div><div>Allez sur <a href="https://console.cloud.google.com" target="_blank" style="color:var(--info-txt)">console.cloud.google.com</a> → Nouveau projet → Activez <strong>Google Sheets API</strong> ET <strong>Google Drive API</strong></div></div><div class="setup-step"><div class="step-n">2</div><div><strong>APIs & Services → Identifiants → Créer → ID client OAuth 2.0</strong><br>Type : Application Web<br>Origines JS autorisées : <code>${_origin}</code><br>URI de redirection : <code>${_redirect}</code></div></div><div class="setup-step"><div class="step-n">3</div><div>Importez votre Excel dans Google Drive → Ouvrir avec Google Sheets → renommez la 1ère feuille <code>Inventaire</code> → partagez avec tous (Éditeur)</div></div><div class="setup-step"><div class="step-n">4</div><div>L'ID du fichier est dans l'URL : docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</div></div></div></details><div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:12px;color:var(--text2)"><div style="margin-bottom:4px"><strong>Client ID :</strong> ${APP_CLIENT_ID.substring(0, 24)}…</div><div><strong>Sheet ID :</strong> ${APP_SHEET_ID.substring(0, 20)}…</div><div style="margin-top:8px;color:var(--text3)">Pour modifier ces valeurs, éditez <code>index.html</code> et redéployez.</div></div><div class="modal-actions" style="flex-wrap:wrap"><button class="btn" onclick="saveGsOnly()"><i class="ti ti-device-floppy"></i> Sauvegarder</button><button class="btn btn-google" onclick="saveAndSignIn()"><svg style="width:18px;height:18px" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg> Se connecter</button>${_loadBtn}</div></div>`); }
+function disconnectGoogle() { gTok = null; gTokExpiry = 0; if (refreshTimer) clearTimeout(refreshTimer); try { sessionStorage.removeItem('gTok'); sessionStorage.removeItem('gTokExpiry'); } catch(e) {} updateBadge('off'); document.getElementById('btn-sync').style.display = 'none'; closeModal(); showToast('Déconnecté de Google', 'info'); }
+function saveGsOnly() { updateBadge(); closeModal(); }
+function saveAndSignIn() { closeModal(); googleSignIn(); }
+async function saveAndLoad() { closeModal(); if (!gTok) { googleSignIn(); return; } await loadFromSheets(); }
+function changeUser() { disconnectGoogle(); currentUser = null; googleProfile = { name: '', email: '', picture: '' }; try { sessionStorage.removeItem('gProfile'); } catch(e) {} localStorage.removeItem(UK); showGoogleLoginModal(); }
+function showGoogleLoginModal() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Connexion</h2></div><div class="modal-body"><div style="text-align:center;padding:16px 0 20px"><i class="ti ti-building-warehouse" style="font-size:52px;color:var(--text3);display:block;margin-bottom:14px"></i><div style="font-size:20px;font-weight:700;margin-bottom:6px">Inventaire Immobilisations</div><div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.6">Connectez-vous pour accéder à l’inventaire</div></div><div id="login-sheet-area" style="margin-bottom:16px"><label class="form-label"><i class="ti ti-table"></i> Sheet ID du fichier Google Sheets *</label><input type="text" id="login-sheet-id" value="${gsConf.sheetId}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" inputmode="url"><div style="font-size:11px;color:var(--text3);margin-top:-6px">L’ID est dans l’URL du fichier : docs.google.com/spreadsheets/d/<strong>ID</strong>/edit</div></div><button class="btn btn-google" style="width:100%;justify-content:center;font-size:15px;min-height:52px" onclick="loginWithGoogle()"><svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> Se connecter avec Google</button><div style="border-top:0.5px solid var(--border);margin-top:16px;padding-top:12px;text-align:center"><button class="btn btn-sm" onclick="showFallbackLogin()" style="color:var(--text3);font-size:12px">Mode local (sans Google)</button></div></div>`); }
+function loginWithGoogle() { const sheetInp = document.getElementById('login-sheet-id'); if (sheetInp && sheetInp.value.trim()) { gsConf.sheetId = sheetInp.value.trim(); } if (!gsConf.sheetId) { showToast('Saisissez le Sheet ID d’abord', 'warn'); return; } closeModal(); googleSignIn(); }
+function showFallbackLogin() { const lp = document.getElementById('login-page'); if (lp) lp.style.display = 'none'; document.getElementById('app').style.display = 'flex'; closeModal(); showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Connexion manuelle</h2></div><div class="modal-body"><div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Mode local — les données ne seront pas synchronisées.</div><div class="form-group"><label class="form-label">Votre nom</label><input type="text" id="cu-inp" placeholder="Prénom Nom"></div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="confirmFallbackLogin()"><i class="ti ti-check"></i> Continuer</button></div>`); }
+function confirmFallbackLogin() { const n = (document.getElementById('cu-inp')?.value || '').trim(); if (!n) { showToast('Saisissez votre nom', 'warn'); return; } currentUser = n; localStorage.setItem(UK, n); document.getElementById('app').style.display = 'flex'; closeModal(); renderUserBadge(); renderTopbarActions(); renderDataStatus(); renderMain(); }
+function renderTopbarActions() { const el = document.getElementById('topbar-actions'); if (el) el.innerHTML = '<button class="btn btn-sm" onclick="openScanLibre()" title="Scan libre"><i class="ti ti-scan"></i></button>'; }
+
+// ---------- INIT ----------
+function showAppShell() {
+  const lp = document.getElementById('login-page');
+  if (lp) lp.style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('nav-bar').style.display = 'flex';
+  document.getElementById('sidebar').style.display = 'none';
+}
+function init() {
+  loadLocal();
+  loadPhotos();
+  const hash = window.location.hash;
+  if (hash.includes('access_token')) {
+    const p = new URLSearchParams(hash.slice(1));
+    const tok = p.get('access_token');
+    const exp = parseInt(p.get('expires_in') || '3600');
+    if (tok) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      setToken(tok, exp);
+      showAppShell();
+      updateBadge('ok');
+      document.getElementById('btn-sync').style.display = 'flex';
+      (async () => {
+        await fetchGoogleProfile();
+        renderUserBadge();
+        renderTopbarActions();
+        renderDataStatus();
+        await loadFromSheets();
+        goView('home');
+        renderUserBadge();
+      })();
+      return;
+    }
+  }
+  if (restoreToken()) {
+    restoreProfile();
+    if (googleProfile.name) {
+      currentUser = googleProfile.name;
+      showAppShell();
+      updateBadge('ok');
+      document.getElementById('btn-sync').style.display = 'flex';
+      renderUserBadge();
+      renderTopbarActions();
+      renderDataStatus();
+      goView('home');
+      loadFromSheets();
+      return;
+    }
+  }
+  showGoogleLoginModal();
+}
+init();
 </script>
 </body>
 </html>
