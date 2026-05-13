@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 3.4 -->
+<!-- VERSION 3.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -437,33 +437,54 @@ function startGoogleLogin(){
 function saveConfigAndLogin(){googleSignIn();}
 
 function init(){
-  loadLocal();loadGs();loadPhotos();
-  // Vérifier si retour OAuth (hash dans URL)
-  if(window.location.hash.includes('access_token')){
-    showAppShell();
-    handleOAuth();
-    return;
-  }
-  // Essayer de restaurer session existante
-  const tokenOk=restoreToken();
-  if(tokenOk){
-    const profileOk=restoreProfile();
-    if(profileOk&&googleProfile.name){
-      // Session valide → lancer l'app directement
-      currentUser=googleProfile.name;
+  loadLocal();
+  loadGs();
+  loadPhotos();
+
+  const hash = window.location.hash;
+
+  // ── CAS 1 : Retour depuis OAuth Google (hash contient access_token) ──
+  if(hash.includes('access_token')){
+    const p = new URLSearchParams(hash.slice(1));
+    const tok = p.get('access_token');
+    const exp = parseInt(p.get('expires_in')||'3600');
+    if(tok){
+      // Nettoyer l'URL
+      history.replaceState(null,'',window.location.pathname+window.location.search);
+      setToken(tok, exp);
       showAppShell();
-      renderUserBadge();
-      renderTopbarActions();
-      renderDataStatus();
-      if(gsConf.sheetId){
+      updateBadge('ok');
+      const bsync = document.getElementById('btn-sync');
+      if(bsync) bsync.style.display='flex';
+      // Récupérer profil → charger données
+      fetchGoogleProfile().then(()=>{
+        renderUserBadge();
+        renderTopbarActions();
+        renderDataStatus();
         loadFromSheets();
-      } else {
-        renderMain();
-      }
+      });
       return;
     }
   }
-  // Pas de session → afficher page de connexion
+
+  // ── CAS 2 : Token existant en session ──
+  if(restoreToken()){
+    restoreProfile();
+    if(googleProfile.name){
+      currentUser = googleProfile.name;
+      showAppShell();
+      updateBadge('ok');
+      const bsync = document.getElementById('btn-sync');
+      if(bsync) bsync.style.display='flex';
+      renderUserBadge();
+      renderTopbarActions();
+      renderDataStatus();
+      loadFromSheets();
+      return;
+    }
+  }
+
+  // ── CAS 3 : Pas de session → page de connexion ──
   showLoginPage();
 }
 
@@ -498,31 +519,9 @@ function googleSignIn(){
     +'&prompt=select_account';
 }
 function handleOAuth(){
-  const hash=window.location.hash;
-  if(!hash.includes('access_token'))return;
-  const p=new URLSearchParams(hash.slice(1));
-  const tok=p.get('access_token');
-  const expiresIn=parseInt(p.get('expires_in')||'3600');
-  if(!tok)return;
-  setToken(tok, expiresIn);
-  history.replaceState(null,'',window.location.pathname+window.location.search);
-  updateBadge('ok');
-  document.getElementById('btn-sync').style.display='flex';
-  // Récupérer le profil Google puis charger les données automatiquement
-  fetchGoogleProfile().then(()=>{
-    renderUserBadge();
-    renderTopbarActions();
-    renderDataStatus();
-    if(gsConf.sheetId){
-      closeModal();
-      loadFromSheets(); // chargement automatique après connexion
-    } else {
-      showToast('Connecté en tant que '+googleProfile.name,'success');
-      renderMain();
-    }
-  });
+  // Appelé seulement depuis init() — ne rien faire ici directement
+  // Le flux complet est géré dans init()
 }
-
 function setToken(tok, expiresIn){
   gTok=tok;
   // On expire 2 min avant la vraie expiration pour anticiper
@@ -1897,7 +1896,6 @@ function showToast(msg,type='info'){
 // ─────────────────────────────────────────────────────────────
 //  START
 // ─────────────────────────────────────────────────────────────
-handleOAuth();
 init();
 </script>
 </body>
