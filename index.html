@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.1 -->
+<!-- VERSION 4.3 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -198,6 +198,27 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
 .hier-row-stats{display:flex;align-items:center;gap:12px;flex-shrink:0}
 #btn-glogin{width:100%;min-height:52px;border-radius:12px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;font-family:inherit;transition:box-shadow .2s}
 #btn-glogin:hover{box-shadow:0 2px 8px rgba(0,0,0,.15)}
+
+.nav-bar{background:var(--bg);border-top:0.5px solid var(--border);display:flex;justify-content:space-around;padding:6px 0;flex-shrink:0;position:sticky;bottom:0;z-index:20}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 12px;border-radius:var(--radius);cursor:pointer;min-width:60px;transition:background .12s;border:none;background:transparent;font-family:inherit;color:var(--text2)}
+.nav-item.active{color:var(--text)}
+.nav-item i{font-size:22px}
+.nav-item span{font-size:10px;font-weight:500}
+.nav-item.active i{color:var(--text)}
+.home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 0;max-width:480px;margin:0 auto}
+.home-tile{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:24px 16px;text-align:center;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:12px}
+.home-tile:active{transform:scale(.97);background:var(--bg2)}
+.home-tile i{font-size:40px}
+.home-tile .tile-label{font-size:15px;font-weight:700}
+.home-tile .tile-sub{font-size:12px;color:var(--text2)}
+.tile-inventory{border-color:var(--info-txt);background:var(--info-bg)}
+.tile-inventory i,.tile-inventory .tile-label{color:var(--info-txt)}
+.tile-locations{border-color:var(--success-txt);background:var(--success-bg)}
+.tile-locations i,.tile-locations .tile-label{color:var(--success-txt)}
+.tile-articles{border-color:var(--warn-txt);background:var(--warn-bg)}
+.tile-articles i,.tile-articles .tile-label{color:var(--warn-txt)}
+.tile-progress{border-color:var(--text2);background:var(--bg2)}
+.tile-progress i,.tile-progress .tile-label{color:var(--text)}
 .step-n{width:24px;height:24px;background:var(--text);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
 .site-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .12s}
 .site-card:active{background:var(--bg2)}
@@ -293,6 +314,13 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
     <!-- MAIN -->
     <div class="main" id="main"></div>
   </div>
+  <div class="nav-bar" id="nav-bar" style="display:none">
+    <button class="nav-item active" id="nav-home" data-view="home" onclick="goViewData(this)"><i class="ti ti-home"></i><span>Accueil</span></button>
+    <button class="nav-item" id="nav-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><span>Inventaire</span></button>
+    <button class="nav-item" id="nav-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><span>Emplacements</span></button>
+    <button class="nav-item" id="nav-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><span>Articles</span></button>
+    <button class="nav-item" id="nav-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><span>Avancement</span></button>
+  </div>
 </div>
 
 <div id="modal"></div>
@@ -372,6 +400,7 @@ const APP_SHEET_ID  = '1dOkNOh9XBBJzyrS6dd1lrGzt1Rr4Xsg3AYYGDABM5GM';
 // ─────────────────────────────────────────────────────────────
 let gsConf={clientId:APP_CLIENT_ID,sheetId:APP_SHEET_ID};
 let drillState={site:null,bat:null,etage:null};
+let currentView='home'; // home | inventory | locations | articles | progress
 let gTok=null,gTokExpiry=0,syncTimer=null,refreshTimer=null,isSyncing=false,lastSync=0;
 let googleProfile={name:'',email:'',picture:''};
 let pendingWrites=[];
@@ -424,10 +453,13 @@ function showLoginPage(){
 }
 
 function showAppShell(){
-  // Masquer la page de connexion, afficher l'app
   const lp=document.getElementById('login-page');
   if(lp)lp.style.display='none';
   document.getElementById('app').style.display='flex';
+  const nb=document.getElementById('nav-bar');
+  if(nb)nb.style.display='flex';
+  // Masquer la sidebar sur l'accueil
+  document.getElementById('sidebar').style.display='none';
 }
 
 function startGoogleLogin(){
@@ -704,10 +736,8 @@ function renderTopbarActions(){
   renderSidebarActions();
   const el=document.getElementById('topbar-actions');
   if(!el)return;
-  let html='';
-  if(can('canSuivi')) html+='<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> <span class="hide-xs">Suivi</span></button>';
-  html+='<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i></button>';
-  if(can('canAddItem')) html+='<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> <span class="hide-xs">Ajouter</span></button>';
+  // Bouton scan libre toujours visible
+  let html='<button class="btn btn-sm" onclick="openScanLibre()" title="Scan libre"><i class="ti ti-scan"></i></button>';
   el.innerHTML=html;
 }
 
@@ -993,8 +1023,9 @@ async function loadFromSheets(){
     buildHier();
     await pullAll();
     renderDataStatus();renderMain();
-    showToast(`${DB.length.toLocaleString()} articles chargés`,'success');
+    showToast(DB.length.toLocaleString('fr-FR')+' articles chargés','success');
     startAutoSync();
+    goView('home'); // Afficher l'accueil après chargement
   }catch(err){showToast('Erreur: '+err.message,'danger');}
   setSyncing(false);
 }
@@ -1459,7 +1490,7 @@ function renderMain(){
         </div></div>`;
       return;
     }
-    renderDashboard();return;
+    if(currentView==='progress'){renderDashboard();}else{renderHome();}return;
   }
   const items=getItems(),inv=items.filter(r=>updates[r.cbi]);
   const pct=items.length?Math.round(inv.length/items.length*100):0;
@@ -2186,6 +2217,221 @@ function renderHierView(){
     }).join('');
   }
   el.innerHTML=html||'<div style="text-align:center;padding:30px;color:var(--text2)">Aucun emplacement</div>';
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  NAVIGATION PAR VUES
+// ─────────────────────────────────────────────────────────────
+function goViewData(el){goView(el.dataset.view);}
+function toggleLocCard(el){var s=el.nextElementSibling;s.style.display=s.style.display==='none'?'':'none';}
+function goView(view){
+  currentView=view;
+  // Mettre à jour les onglets actifs
+  ['home','inventory','locations','articles','progress'].forEach(function(v){
+    const el=document.getElementById('nav-'+v);
+    if(el) el.className='nav-item'+(v===view?' active':'');
+  });
+  const sidebar=document.getElementById('sidebar');
+  const main=document.getElementById('main');
+  if(view==='home'){
+    sidebar.style.display='none';
+    renderHome();
+  } else if(view==='inventory'){
+    sidebar.style.display='flex';
+    renderMain();
+  } else if(view==='locations'){
+    sidebar.style.display='none';
+    renderLocationsView();
+  } else if(view==='articles'){
+    sidebar.style.display='none';
+    renderArticlesView();
+  } else if(view==='progress'){
+    sidebar.style.display='none';
+    drillState={site:null,bat:null,etage:null};
+    renderDashboard();
+  }
+}
+
+function renderHome(){
+  const main=document.getElementById('main');
+  const tot=DB.length+newItems.filter(function(r){return !r._newLoc;}).length;
+  const inv=Object.keys(updates).length;
+  const pct=tot?Math.round(inv/tot*100):0;
+  const name=googleProfile.name||currentUser||'';
+
+  main.innerHTML=
+    '<div style="padding:8px 0 20px;max-width:480px;margin:0 auto">'
+    // Bonjour
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:22px;font-weight:800">Bonjour'+( name?' '+name.split(' ')[0]:'')+' 👋</div>'
+    +'<div style="font-size:14px;color:var(--text2);margin-top:4px">Inventaire Immobilisations</div>'
+    +'</div>'
+    // Progression globale
+    +(tot?'<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:20px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+      +'<div style="font-size:14px;font-weight:700">Avancement global</div>'
+      +'<div style="font-size:20px;font-weight:800;color:'+(pct===100?'var(--success-txt)':pct>50?'var(--warn-txt)':'var(--info-txt)')+'">'+pct+'%</div>'
+      +'</div>'
+      +'<div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:'+pct+'%;border-radius:5px"></div></div>'
+      +'<div style="font-size:12px;color:var(--text2);margin-top:8px">'+inv.toLocaleString('fr-FR')+' / '+tot.toLocaleString('fr-FR')+' articles inventoriés</div>'
+      +'</div>'
+    :'<div class="alert alert-warn" style="margin-bottom:20px"><i class="ti ti-alert-triangle"></i>Aucune donnée chargée — connexion Google Sheets en cours…</div>')
+    // Tuiles
+    +'<div class="home-grid">'
+    +'<div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)">'
+    +'<i class="ti ti-clipboard-check"></i>'
+    +'<div class="tile-label">Inventaire</div>'
+    +'<div class="tile-sub">Réaliser l’inventaire</div>'
+    +'</div>'
+    +'<div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)">'
+    +'<i class="ti ti-chart-bar"></i>'
+    +'<div class="tile-label">Avancement</div>'
+    +'<div class="tile-sub">Voir la progression</div>'
+    +'</div>'
+    +'<div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)">'
+    +'<i class="ti ti-map-pin"></i>'
+    +'<div class="tile-label">Emplacements</div>'
+    +'<div class="tile-sub">Parcourir les lieux</div>'
+    +'</div>'
+    +'<div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)">'
+    +'<i class="ti ti-box"></i>'
+    +'<div class="tile-label">Articles</div>'
+    +'<div class="tile-sub">Rechercher un article</div>'
+    +'</div>'
+    +'</div>'
+    // Boutons rapides admin
+    +(can('canSuivi')?'<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">'
+      +'<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button>'
+      +'<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button>'
+      +(can('canExport')?'<button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button>':'')
+      +'</div>'
+    :'<div style="margin-top:16px">'
+      +'<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button>'
+      +'</div>')
+    +'</div>';
+}
+
+function renderLocationsView(){
+  const main=document.getElementById('main');
+  const sites=Object.keys(HIER).sort();
+  if(!sites.length){
+    main.innerHTML='<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>';
+    return;
+  }
+  let html='<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="font-size:18px;font-weight:700">Emplacements</div>'
+    +(can('canAddLocation')?'<button class="btn btn-sm btn-primary" onclick="openAddLocation()"><i class="ti ti-plus"></i> Ajouter</button>':'')
+    +'</div>';
+  // Arbre hiérarchique complet
+  sites.forEach(function(site){
+    const bats=Object.keys(HIER[site]||{}).sort();
+    const siteItems=[...DB,...newItems].filter(function(r){return r.site===site&&!r._newLoc;});
+    const siteInv=siteItems.filter(function(r){return updates[r.cbi];}).length;
+    const sitePct=siteItems.length?Math.round(siteInv/siteItems.length*100):0;
+    const st=siteStatuts[site]||{statut:'NON OUVERT'};
+    const stColor=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text3)';
+    html+='<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden">'
+      +'<div style="padding:14px;display:flex;align-items:center;gap:10px;cursor:pointer" data-open="0" onclick="toggleLocCard(this)">'
+      +'<i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i>'
+      +'<div style="flex:1"><div style="font-size:15px;font-weight:700">'+site+'</div>'
+      +'<div style="font-size:12px;color:var(--text2)">'+bats.length+' bâtiment(s) · '+siteItems.length+' articles</div></div>'
+      +'<span style="font-size:12px;font-weight:600;color:'+stColor+'">'+st.statut+'</span>'
+      +'<span style="font-size:14px;font-weight:700;margin-left:8px">'+sitePct+'%</span>'
+      +'<i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3)"></i>'
+      +'</div>'
+      +'<div style="display:none;border-top:0.5px solid var(--border)">';
+    bats.forEach(function(bat){
+      const etages=Object.keys((HIER[site]||{})[bat]||{}).sort();
+      html+='<div style="padding:10px 14px 10px 36px;border-bottom:0.5px solid var(--border)">'
+        +'<div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">'
+        +'<i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>'+bat+'</div>';
+      etages.forEach(function(etage){
+        const bureaux=(((HIER[site]||{})[bat]||{})[etage]||[]);
+        html+='<div style="margin-left:16px;margin-bottom:6px">'
+          +'<div style="font-size:12px;color:var(--text2);margin-bottom:4px">'+etage+'</div>';
+        bureaux.forEach(function(bureau){
+          const items=[...DB,...newItems].filter(function(r){return r.site===site&&r.bat===bat&&r.etage===etage&&r.bureau===bureau&&!r._newLoc;});
+          const invC=items.filter(function(r){return updates[r.cbi];}).length;
+          const pct=items.length?Math.round(invC/items.length*100):0;
+          const pctColor=pct===100?'var(--success-txt)':pct>0?'var(--warn-txt)':'var(--text3)';
+          html+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;border-bottom:0.5px solid var(--border)" '
+            +'data-site="'+site+'" data-bat="'+bat+'" data-etage="'+etage+'" data-bureau="'+bureau+'" onclick="goToInventory(this)">'
+            +'<i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i>'
+            +'<div style="flex:1;font-size:13px">'+bureau+'</div>'
+            +'<span style="font-size:12px;font-weight:600;color:'+pctColor+'">'+pct+'%</span>'
+            +'<span style="font-size:11px;color:var(--text3)">'+invC+'/'+items.length+'</span>'
+            +'<i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i>'
+            +'</div>';
+        });
+        html+='</div>';
+      });
+      html+='</div>';
+    });
+    html+='</div></div>';
+  });
+  main.innerHTML=html;
+}
+
+function goToInventory(el){
+  navigateTo(el.dataset.site,el.dataset.bat,el.dataset.etage,el.dataset.bureau);
+  goView('inventory');
+}
+
+function renderArticlesView(){
+  const main=document.getElementById('main');
+  const all=[...DB,...newItems].filter(function(r){return !r._newLoc;});
+  main.innerHTML=
+    '<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="font-size:18px;font-weight:700">Articles ('+all.length.toLocaleString('fr-FR')+')</div>'
+    +'<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button>'
+    +'</div>'
+    +'<div class="search-row" style="margin-bottom:14px">'
+    +'<input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="filterArticlesView()" style="margin:0;flex:1">'
+    +'<select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px">'
+    +'<option value="">Tous</option>'
+    +'<option value="__inv">Inventoriés</option>'
+    +'<option value="__non">Non inventoriés</option>'
+    +'<option value="OUI">Trouvés</option>'
+    +'<option value="NON">Non trouvés</option>'
+    +'</select>'
+    +'</div>'
+    +'<div id="art-list"></div>';
+  filterArticlesView();
+}
+
+function filterArticlesView(){
+  const all=[...DB,...newItems].filter(function(r){return !r._newLoc;});
+  const srch=(document.getElementById('art-srch')||{value:''}).value.toLowerCase();
+  const filt=(document.getElementById('art-filt')||{value:''}).value;
+  let filtered=all.filter(function(r){
+    if(srch&&![r.cbi,r.cbe,(r.art||'').toLowerCase(),(r.fam||'').toLowerCase()].some(function(x){return x.includes(srch);})) return false;
+    if(filt==='__inv') return !!updates[r.cbi];
+    if(filt==='__non') return !updates[r.cbi];
+    if(filt==='OUI'||filt==='NON') return (updates[r.cbi]?.trouve||'')=== filt;
+    return true;
+  });
+  // Limiter l'affichage à 100 résultats pour les performances
+  const total=filtered.length;
+  filtered=filtered.slice(0,100);
+  const el=document.getElementById('art-list');
+  if(!el)return;
+  if(!filtered.length){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article</div>';return;}
+  el.innerHTML='<div class="table-wrap">'
+    +'<div class="t-head"><div class="col-cbi">Code barre</div><div>Article</div><div>État</div><div></div></div>'
+    +filtered.map(function(r){
+      const u=updates[r.cbi]||{},sv=u.serv||r.serv,ok=!!updates[r.cbi];
+      const sc=sv==='EN SERVICE'?'b-service':sv==='HORS SERVICE'?'b-hors':'b-rebut';
+      return '<div class="t-row'+(ok?' inventoried':'')+'" data-cbi="'+r.cbi+'" onclick="openEditItem_cbi(this.dataset.cbi)">'
+        +'<div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">'+r.cbi+'</div>'
+        +'<div style="overflow:hidden"><div style="font-weight:'+(ok?700:400)+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">'+r.art+'</div>'
+        +'<div style="font-size:11px;color:var(--text3)">'+r.fam+' · '+r.bureau+'</div></div>'
+        +'<div><span class="badge '+sc+'" style="font-size:11px">'+sv+'</span></div>'
+        +'<div style="text-align:center">'+(ok?'<i class="ti ti-check" style="color:var(--success-txt)"></i>':'')+'</div>'
+        +'</div>';
+    }).join('')
+    +'</div>'
+    +(total>100?'<div style="text-align:center;padding:12px;font-size:12px;color:var(--text2)">'+total+' résultats — affichage limité à 100. Affinez la recherche.</div>':'');
 }
 
 
