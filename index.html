@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<!-- VERSION 2.5 -->
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -702,7 +706,7 @@ async function writeSuivi(site,statut,obs){
 }
 
 async function generateExportFinal(){
-  if(!DB.length){showToast('Chargez d'abord les données','warn');return;}
+  if(!DB.length){showToast("Chargez d'abord les données",'warn');return;}
   showToast('Génération export final…','info');
   try{
     await ensureSheets();
@@ -1281,7 +1285,7 @@ function resetUpdates(){
 //  SUIVI PAR SITE
 // ─────────────────────────────────────────────────────────────
 function openSuiviPanel(){
-  if(!DB.length){showToast('Chargez d'abord les données','warn');return;}
+  if(!DB.length){showToast("Chargez d'abord les données",'warn');return;}
   const sites=Object.keys(HIER).sort();
   const rows=sites.map(site=>{
     const allItems=[...DB,...newItems].filter(r=>r.site===site&&!r._newLoc);
