@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 2.5 -->
+<!-- VERSION 2.6 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -315,7 +315,7 @@ let currentUser=null,updates={},newItems=[],newLocs=[];
 let siteStatuts={};  // {SITE: {statut,by,dateDebut,dateMaj,obs}}
 let curLoc={site:'',bat:'',etage:'',bureau:''};
 let gsConf={clientId:'',sheetId:''};
-let gTok=null,syncTimer=null,isSyncing=false,lastSync=0;
+let gTok=null,gTokExpiry=0,syncTimer=null,refreshTimer=null,isSyncing=false,lastSync=0;
 let pendingWrites=[];
 
 // ─────────────────────────────────────────────────────────────
@@ -324,6 +324,14 @@ let pendingWrites=[];
 function init(){
   loadLocal();loadGs();loadPhotos();
   handleOAuth();
+  // Restaurer token existant si pas de nouveau token dans l'URL
+  if(!gTok && !window.location.hash.includes('access_token')){
+    const restored=restoreToken();
+    if(restored && gsConf.sheetId){
+      // Token restauré - sync en arrière-plan sans recharger tout
+      setTimeout(()=>syncNow(), 500);
+    }
+  }
   const u=localStorage.getItem(UK);
   if(u){currentUser=u;setUserBadge();renderDataStatus();renderMain();}
   else showLoginModal();
@@ -361,20 +369,118 @@ function handleOAuth(){
   const hash=window.location.hash;
   if(!hash.includes('access_token'))return;
   const p=new URLSearchParams(hash.slice(1));
-  gTok=p.get('access_token');
+  const tok=p.get('access_token');
+  const expiresIn=parseInt(p.get('expires_in')||'3600');
+  if(!tok)return;
+  setToken(tok, expiresIn);
   history.replaceState(null,'',window.location.pathname+window.location.search);
   updateBadge('ok');
   document.getElementById('btn-sync').style.display='flex';
   showToast('Connecté à Google Sheets ✓','success');
+  // Récupérer l'email pour le hint de refresh
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+gTok}})
+    .then(r=>r.json()).then(info=>{ if(info.email)try{localStorage.setItem('inv_google_email',info.email);}catch(e){} }).catch(()=>{});
   if(gsConf.sheetId)loadFromSheets();
+}
+
+function setToken(tok, expiresIn){
+  gTok=tok;
+  // On expire 2 min avant la vraie expiration pour anticiper
+  gTokExpiry=Date.now()+(expiresIn-120)*1000;
+  // Sauvegarder dans sessionStorage (survit aux rechargements de page, pas à la fermeture)
+  try{
+    sessionStorage.setItem('gTok', tok);
+    sessionStorage.setItem('gTokExpiry', String(gTokExpiry));
+  }catch(e){}
+  scheduleTokenRefresh(expiresIn);
+}
+
+function restoreToken(){
+  // Essayer de restaurer le token depuis sessionStorage
+  try{
+    const tok=sessionStorage.getItem('gTok');
+    const exp=parseInt(sessionStorage.getItem('gTokExpiry')||'0');
+    if(tok && exp > Date.now()+60000){
+      // Token encore valide (au moins 1 minute restante)
+      gTok=tok;
+      gTokExpiry=exp;
+      const remainingSecs=Math.floor((exp-Date.now())/1000);
+      scheduleTokenRefresh(remainingSecs);
+      updateBadge('ok');
+      document.getElementById('btn-sync').style.display='flex';
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+function scheduleTokenRefresh(expiresIn){
+  // Refresh automatique 2 min avant expiration
+  if(refreshTimer)clearTimeout(refreshTimer);
+  const delay=Math.max((expiresIn-120)*1000, 10000);
+  refreshTimer=setTimeout(()=>{
+    silentTokenRefresh();
+  }, delay);
+}
+
+function silentTokenRefresh(){
+  if(!gsConf.clientId)return;
+  // Utiliser un iframe caché pour renouveler le token silencieusement
+  const existing=document.getElementById('oauth-iframe');
+  if(existing)existing.remove();
+  const scope='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
+  const redirect=window.location.href.split('#')[0].split('?')[0];
+  const url='https://accounts.google.com/o/oauth2/v2/auth'
+    +'?client_id='+encodeURIComponent(gsConf.clientId)
+    +'&redirect_uri='+encodeURIComponent(redirect)
+    +'&response_type=token'
+    +'&scope='+encodeURIComponent(scope)
+    +'&prompt=none'  // ne pas montrer l'écran de connexion
+    +'&login_hint='+encodeURIComponent(getStoredEmail());
+  const iframe=document.createElement('iframe');
+  iframe.id='oauth-iframe';
+  iframe.style.cssText='display:none;width:0;height:0;position:absolute';
+  iframe.src=url;
+  iframe.onload=()=>{
+    try{
+      // Essayer de lire le hash de l'iframe
+      const h=iframe.contentWindow.location.hash;
+      if(h.includes('access_token')){
+        const p=new URLSearchParams(h.slice(1));
+        const tok=p.get('access_token');
+        const exp=parseInt(p.get('expires_in')||'3600');
+        if(tok){setToken(tok,exp);console.log('Token renouvelé silencieusement');}
+      }
+    }catch(e){
+      // Cross-origin block - pas grave, l'utilisateur devra se reconnecter manuellement
+      console.warn('Refresh silencieux bloqué, reconnexion manuelle nécessaire');
+      updateBadge('off');
+      showToast('Session expirée — reconnectez-vous via le badge','warn');
+    }
+    setTimeout(()=>iframe.remove(), 1000);
+  };
+  document.body.appendChild(iframe);
+}
+
+function getStoredEmail(){
+  try{return localStorage.getItem('inv_google_email')||'';}catch(e){return '';}
 }
 
 // ─────────────────────────────────────────────────────────────
 //  SHEETS API
 // ─────────────────────────────────────────────────────────────
 async function sGet(range){
+  if(gTok && Date.now()>gTokExpiry-30000){
+    // Token presque expiré - tenter refresh d'abord
+    await new Promise(res=>setTimeout(res,500));
+  }
   const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}`,{headers:{Authorization:'Bearer '+gTok}});
-  if(r.status===401){gTok=null;updateBadge('off');throw new Error('Session expirée — reconnectez-vous');}
+  if(r.status===401){
+    gTok=null;
+    try{sessionStorage.removeItem('gTok');sessionStorage.removeItem('gTokExpiry');}catch(e){}
+    updateBadge('off');
+    throw new Error('Session expirée — reconnectez-vous');
+  }
   if(!r.ok)throw new Error(`API ${r.status}`);
   return r.json();
 }
@@ -763,7 +869,7 @@ function updateBadge(state){
   const b=document.getElementById('gs-badge'),t=document.getElementById('gs-txt'),d=document.getElementById('gs-dot');
   if(!b)return;
   b.className='gs-badge ';d.classList.remove('pulse');
-  if(gTok||state==='ok'){b.className+='gs-ok';t.textContent='Google Sheets ✓';document.getElementById('btn-sync').style.display='flex';}
+  if(gTok||state==='ok'){b.className+='gs-ok';const em=getStoredEmail();t.textContent=em?em.split('@')[0]+' ✓':'Google Sheets ✓';document.getElementById('btn-sync').style.display='flex';}
   else if(!gsConf.clientId||!gsConf.sheetId){b.className+='gs-off';t.textContent='Configurer';}
   else{b.className+='gs-off';t.textContent='Se connecter';}
 }
@@ -779,7 +885,9 @@ function setSyncing(on,msg){
 function openGsPanel(){
   const _origin=window.location.origin;
   const _redirect=window.location.href.replace(/#.*/,'').replace(/\?.*/,'');
-  const _connectedHtml=gTok?'<div class="alert alert-success"><i class="ti ti-cloud-check"></i>Connecte — sync automatique toutes les 30 s</div>':'';
+  const _email=getStoredEmail();
+  const _remaining=gTok?Math.max(0,Math.round((gTokExpiry-Date.now())/60000)):0;
+  const _connectedHtml=gTok?'<div class="alert alert-success" style="flex-wrap:wrap;gap:6px"><i class="ti ti-cloud-check"></i><div><strong>'+(_email||'Connecté')+'</strong><br><span style="font-size:12px">Session valide encore ~'+_remaining+' min · renouvellement automatique</span></div><button class="btn btn-sm" style="margin-left:auto;color:var(--danger-txt)" onclick="disconnectGoogle()"><i class="ti ti-logout"></i></button></div>':'';
   const _loadBtn=gTok?'<button class="btn btn-primary" onclick="saveAndLoad()"><i class="ti ti-cloud-download"></i> Charger depuis Sheets</button>':'';
   showModal(
     '<div class="modal-drag"></div>'
@@ -805,6 +913,16 @@ function openGsPanel(){
     +'</div></div>'
   );
 }
+function disconnectGoogle(){
+  gTok=null;gTokExpiry=0;
+  if(refreshTimer)clearTimeout(refreshTimer);refreshTimer=null;
+  try{sessionStorage.removeItem('gTok');sessionStorage.removeItem('gTokExpiry');}catch(e){}
+  updateBadge('off');
+  document.getElementById('btn-sync').style.display='none';
+  closeModal();
+  showToast('Déconnecté de Google','info');
+}
+
 function saveGsOnly(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();updateBadge();closeModal();showToast('Configuration sauvegardée','success');}
 function saveAndSignIn(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();closeModal();googleSignIn();}
 async function saveAndLoad(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();closeModal();if(!gTok){googleSignIn();return;}await loadFromSheets();}
