@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.3 -->
+<!-- VERSION 4.4 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -512,6 +512,7 @@ function init(){
       renderUserBadge();
       renderTopbarActions();
       renderDataStatus();
+      goView('home');
       loadFromSheets();
       return;
     }
@@ -1025,7 +1026,9 @@ async function loadFromSheets(){
     renderDataStatus();renderMain();
     showToast(DB.length.toLocaleString('fr-FR')+' articles chargés','success');
     startAutoSync();
-    goView('home'); // Afficher l'accueil après chargement
+    renderUserBadge();
+    renderTopbarActions();
+    goView('home'); // Afficher l'accueil après chargementment
   }catch(err){showToast('Erreur: '+err.message,'danger');}
   setSyncing(false);
 }
@@ -2227,6 +2230,7 @@ function goViewData(el){goView(el.dataset.view);}
 function toggleLocCard(el){var s=el.nextElementSibling;s.style.display=s.style.display==='none'?'':'none';}
 function goView(view){
   currentView=view;
+  renderUserBadge();
   // Mettre à jour les onglets actifs
   ['home','inventory','locations','articles','progress'].forEach(function(v){
     const el=document.getElementById('nav-'+v);
