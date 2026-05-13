@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.0 -->
+<!-- VERSION 4.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -605,25 +605,37 @@ function silentTokenRefresh(){
 async function fetchGoogleProfile(){
   try{
     const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+gTok}});
-    if(!r.ok)return;
+    if(!r.ok){
+      console.error('fetchGoogleProfile failed:', r.status);
+      // Fallback : utiliser l'email stocké
+      const em=localStorage.getItem('inv_google_email')||'';
+      if(em){
+        googleProfile={name:em.split('@')[0],email:em,picture:''};
+        currentUser=googleProfile.name;
+        currentRole=getRole(em);
+      }
+      return;
+    }
     const info=await r.json();
     googleProfile={
-      name:info.name||info.given_name||info.email||'',
+      name:info.name||info.given_name||info.email||'Utilisateur',
       email:info.email||'',
       picture:info.picture||''
     };
-    // Définir le rôle selon l'email
     currentRole=getRole(googleProfile.email);
-    // Persister pour restauration
+    currentUser=googleProfile.name;
     try{
       localStorage.setItem('inv_google_email',googleProfile.email);
       localStorage.setItem('inv_role',currentRole);
+      localStorage.setItem('inv_user',currentUser);
       sessionStorage.setItem('gProfile',JSON.stringify(googleProfile));
     }catch(e){}
-    // Définir currentUser = nom Google
-    currentUser=googleProfile.name;
-    localStorage.setItem('inv_user',currentUser);
-  }catch(e){}
+  }catch(e){
+    console.error('fetchGoogleProfile error:',e);
+    // Fallback sur données locales
+    const saved=localStorage.getItem('inv_user')||'';
+    if(saved){currentUser=saved;googleProfile={name:saved,email:'',picture:''};}
+  }
 }
 
 function restoreProfile(){
@@ -702,17 +714,19 @@ function renderTopbarActions(){
 function renderUserBadge(){
   const el=document.getElementById('user-area');
   if(!el)return;
+  // S'assurer qu'on a un nom à afficher
+  const name=googleProfile.name||currentUser||'Utilisateur';
   const roleBadge=currentRole==='admin'
     ?'<span style="background:#fff3cd;color:#856404;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px"><i class="ti ti-shield-check" style="font-size:10px"></i> Admin</span>'
     :'<span style="background:var(--bg2);color:var(--text3);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">Utilisateur</span>';
   if(googleProfile.picture){
     el.innerHTML='<div class="user-badge" style="padding:3px 10px 3px 4px;gap:7px">'
       +'<img src="'+googleProfile.picture+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover" onerror="this.style.display=&quot;none&quot;">'
-      +'<span style="font-size:13px">'+googleProfile.name+'</span>'
-      +roleBadge
-      +'</div>';
+      +'<span style="font-size:13px">'+name+'</span>'
+      +roleBadge+'</div>';
   } else {
-    el.innerHTML='<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i>'+googleProfile.name+roleBadge+'</div>';
+    el.innerHTML='<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i>'
+      +'<span>'+name+'</span>'+roleBadge+'</div>';
   }
 }
 
