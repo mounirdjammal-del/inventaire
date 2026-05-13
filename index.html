@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 3.2 -->
+<!-- VERSION 3.4 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -196,6 +196,8 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
 .hier-row-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .hier-row-label{display:flex;align-items:center;gap:10px;flex:1;min-width:0;overflow:hidden}
 .hier-row-stats{display:flex;align-items:center;gap:12px;flex-shrink:0}
+#btn-glogin{width:100%;min-height:52px;border-radius:12px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;font-family:inherit;transition:box-shadow .2s}
+#btn-glogin:hover{box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .step-n{width:24px;height:24px;background:var(--text);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
 .site-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .12s}
 .site-card:active{background:var(--bg2)}
@@ -213,7 +215,7 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app" style="display:none">
 
   <!-- TOPBAR -->
   <div class="topbar">
@@ -363,7 +365,12 @@ let DB=[],HIER={},FAMS={};
 let currentUser=null,updates={},newItems=[],newLocs=[];
 let siteStatuts={};  // {SITE: {statut,by,dateDebut,dateMaj,obs}}
 let curLoc={site:'',bat:'',etage:'',bureau:''};
-let gsConf={clientId:'',sheetId:''};
+// ─── CONFIGURATION ADMINISTRATEUR ────────────────────────────
+// À remplir par l'administrateur — NE PAS MODIFIER le reste
+const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.googleusercontent.com';
+const APP_SHEET_ID  = '1dOkNOh9XBBJzyrS6dd1lrGzt1Rr4Xsg3AYYGDABM5GM';
+// ─────────────────────────────────────────────────────────────
+let gsConf={clientId:APP_CLIENT_ID,sheetId:APP_SHEET_ID};
 let gTok=null,gTokExpiry=0,syncTimer=null,refreshTimer=null,isSyncing=false,lastSync=0;
 let googleProfile={name:'',email:'',picture:''};
 let pendingWrites=[];
@@ -371,46 +378,100 @@ let pendingWrites=[];
 // ─────────────────────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+//  PAGE DE CONNEXION
+// ─────────────────────────────────────────────────────────────
+function showLoginPage(){
+  document.getElementById('app').style.display='none';
+  let page=document.getElementById('login-page');
+  if(!page){
+    page=document.createElement('div');
+    page.id='login-page';
+    document.body.insertBefore(page,document.getElementById('app'));
+  }
+  const configured=APP_CLIENT_ID!=='VOTRE_CLIENT_ID.apps.googleusercontent.com'&&APP_SHEET_ID!=='VOTRE_SHEET_ID';
+  page.style.cssText='position:fixed;inset:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  page.innerHTML=
+    '<div style="background:var(--bg);border-radius:20px;width:100%;max-width:400px;padding:40px 32px;box-shadow:0 8px 48px rgba(0,0,0,.12);text-align:center">'
+    // Logo
+    +'<div style="width:72px;height:72px;background:var(--text);border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">'
+    +'<i class="ti ti-building-warehouse" style="font-size:36px;color:var(--bg)"></i></div>'
+    +'<div style="font-size:24px;font-weight:800;margin-bottom:6px">Inventaire</div>'
+    +'<div style="font-size:15px;color:var(--text2);margin-bottom:8px">Immobilisations</div>'
+    +'<div style="font-size:13px;color:var(--text3);margin-bottom:32px">Connectez-vous pour accéder à l’application</div>'
+    +(configured
+      // App configurée → bouton Google simple
+      ?'<button id="btn-glogin" onclick="startGoogleLogin()">'
+        +'<svg width="20" height="20" viewBox="0 0 48 48" style="flex-shrink:0">'
+        +'<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>'
+        +'<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>'
+        +'<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>'
+        +'<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>'
+        +'</svg>Se connecter avec Google</button>'
+      // App non configurée → message admin
+      :'<div style="background:var(--warn-bg);color:var(--warn-txt);border-radius:12px;padding:16px;font-size:13px;line-height:1.7;text-align:left">'
+        +'<strong><i class="ti ti-tool"></i> Configuration requise</strong><br>'
+        +'Ouvrez le fichier <code>index.html</code> et renseignez :<br>'
+        +'<code>APP_CLIENT_ID</code> et <code>APP_SHEET_ID</code>'
+        +'</div>')
+    +'<div style="margin-top:20px">'
+    +'<button onclick="showFallbackLogin()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit">'
+    +'Mode local (sans Google)</button>'
+    +'</div>'
+    +'</div>';
+}
+
+function showAppShell(){
+  // Masquer la page de connexion, afficher l'app
+  const lp=document.getElementById('login-page');
+  if(lp)lp.style.display='none';
+  document.getElementById('app').style.display='flex';
+}
+
+function startGoogleLogin(){
+  // Lancer OAuth sans ouvrir de modal
+  googleSignIn();
+}
+
+function saveConfigAndLogin(){googleSignIn();}
+
 function init(){
   loadLocal();loadGs();loadPhotos();
-  // Essayer de restaurer le profil Google en session
-  const profileRestored=restoreProfile();
-  handleOAuth();
-  // Restaurer token existant si pas de nouveau token dans l'URL
-  if(!gTok && !window.location.hash.includes('access_token')){
-    const restored=restoreToken();
-    if(restored){
-      restoreProfile();
-      if(googleProfile.name){
-        currentUser=googleProfile.name;
-        renderUserBadge();
-        renderTopbarActions();
-        renderDataStatus();
-        if(gsConf.sheetId){
-          loadFromSheets(); // rechargement auto des données
-        } else {
-          renderMain();
-        }
-        return;
+  // Vérifier si retour OAuth (hash dans URL)
+  if(window.location.hash.includes('access_token')){
+    showAppShell();
+    handleOAuth();
+    return;
+  }
+  // Essayer de restaurer session existante
+  const tokenOk=restoreToken();
+  if(tokenOk){
+    const profileOk=restoreProfile();
+    if(profileOk&&googleProfile.name){
+      // Session valide → lancer l'app directement
+      currentUser=googleProfile.name;
+      showAppShell();
+      renderUserBadge();
+      renderTopbarActions();
+      renderDataStatus();
+      if(gsConf.sheetId){
+        loadFromSheets();
+      } else {
+        renderMain();
       }
+      return;
     }
   }
-  // Si pas de token Google mais nom sauvegardé localement
-  if(!gTok){
-    const u=localStorage.getItem(UK);
-    if(u&&!gsConf.clientId){
-      // Pas de config Google — mode local, garder l'ancien comportement
-      currentUser=u;setUserBadge();renderDataStatus();renderMain();
-    } else {
-      // Forcer connexion Google
-      showGoogleLoginModal();
-    }
-  }
+  // Pas de session → afficher page de connexion
+  showLoginPage();
 }
+
+
 function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');updates=d.u||{};newItems=d.ni||[];newLocs=d.nl||[];siteStatuts=d.ss||{};}catch(e){}}
 function saveLocal(){try{localStorage.setItem(SK,JSON.stringify({u:updates,ni:newItems,nl:newLocs,ss:siteStatuts,t:Date.now()}));}catch(e){}}
-function loadGs(){try{const c=JSON.parse(localStorage.getItem(GK)||'{}');gsConf.clientId=c.c||'';gsConf.sheetId=c.s||'';}catch(e){}updateBadge();}
-function saveGs(){localStorage.setItem(GK,JSON.stringify({c:gsConf.clientId,s:gsConf.sheetId}));}
+function loadGs(){gsConf={clientId:APP_CLIENT_ID,sheetId:APP_SHEET_ID};updateBadge();}
+function saveGs(){/* config hardcodée, rien à sauvegarder */}
 
 // ─────────────────────────────────────────────────────────────
 //  SIDEBAR (mobile drawer)
@@ -1104,10 +1165,13 @@ function openGsPanel(){
     +'<div class="setup-step"><div class="step-n">3</div><div>Importez votre Excel dans Google Drive &rarr; Ouvrir avec Google Sheets &rarr; renommez la 1&egrave;re feuille <code>Inventaire</code> &rarr; partagez avec tous (&Eacute;diteur)</div></div>'
     +'<div class="setup-step"><div class="step-n">4</div><div>L\'ID du fichier est dans l\'URL : docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</div></div>'
     +'</div></details>'
-    +'<div class="form-group"><label class="form-label">Client ID OAuth 2.0 *</label>'
-    +'<input type="text" id="gs-cid" value="'+gsConf.clientId+'" placeholder="123456789-abc....apps.googleusercontent.com" inputmode="url"></div>'
-    +'<div class="form-group"><label class="form-label">Sheet ID *</label>'
-    +'<input type="text" id="gs-sid" value="'+gsConf.sheetId+'" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" inputmode="url"></div>'
+    +(can('canManageRoles')
+    ?'<div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:12px;color:var(--text2)">'
+      +'<div style="margin-bottom:4px"><strong>Client ID :</strong> '+APP_CLIENT_ID.substring(0,24)+'…</div>'
+      +'<div><strong>Sheet ID :</strong> '+APP_SHEET_ID.substring(0,20)+'…</div>'
+      +'<div style="margin-top:8px;color:var(--text3)">Pour modifier ces valeurs, éditez <code>index.html</code> et redéployez.</div>'
+      +'</div>'
+    :'')
     +'<div class="modal-actions" style="flex-wrap:wrap">'
     +'<button class="btn" onclick="saveGsOnly()"><i class="ti ti-device-floppy"></i> Sauvegarder</button>'
     +'<button class="btn btn-google" onclick="saveAndSignIn()"><svg style="width:18px;height:18px" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg> Se connecter</button>'
@@ -1125,9 +1189,9 @@ function disconnectGoogle(){
   showToast('Déconnecté de Google','info');
 }
 
-function saveGsOnly(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();updateBadge();closeModal();showToast('Configuration sauvegardée','success');}
-function saveAndSignIn(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();closeModal();googleSignIn();}
-async function saveAndLoad(){gsConf.clientId=(document.getElementById('gs-cid').value||'').trim();gsConf.sheetId=(document.getElementById('gs-sid').value||'').trim();saveGs();closeModal();if(!gTok){googleSignIn();return;}await loadFromSheets();}
+function saveGsOnly(){updateBadge();closeModal();}
+function saveAndSignIn(){closeModal();googleSignIn();}
+async function saveAndLoad(){closeModal();if(!gTok){googleSignIn();return;}await loadFromSheets();}
 
 // ─────────────────────────────────────────────────────────────
 //  UTILISATEUR
@@ -1210,6 +1274,9 @@ function loginWithGoogle(){
 
 function showFallbackLogin(){
   // Connexion manuelle de secours
+  const lp=document.getElementById('login-page');
+  if(lp)lp.style.display='none';
+  document.getElementById('app').style.display='flex';
   closeModal();
   showModal(
     '<div class="modal-drag"></div>'
@@ -1228,7 +1295,8 @@ function confirmFallbackLogin(){
   const n=(document.getElementById('cu-inp').value||'').trim();
   if(!n){showToast('Saisissez votre nom','warn');return;}
   currentUser=n;localStorage.setItem(UK,n);
-  closeModal();setUserBadge();renderDataStatus();renderMain();
+  showAppShell();
+  closeModal();setUserBadge();renderTopbarActions();renderDataStatus();renderMain();
 }
 
 function changeUser(){
