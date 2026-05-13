@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 2.6 -->
+<!-- VERSION 3.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -189,6 +189,13 @@ textarea{min-height:80px;resize:vertical}
 .progress-lbl{font-size:11px;color:var(--text3);margin-top:3px}
 code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;padding:2px 7px;font-family:monospace;font-size:12px}
 .setup-step{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:14px;line-height:1.6}
+
+.hier-row{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:8px;transition:background .12s}
+.hier-row.clickable:active{background:var(--bg2)}
+.hier-row.clickable:hover{background:var(--bg2)}
+.hier-row-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.hier-row-label{display:flex;align-items:center;gap:10px;flex:1;min-width:0;overflow:hidden}
+.hier-row-stats{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .step-n{width:24px;height:24px;background:var(--text);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
 .site-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .12s}
 .site-card:active{background:var(--bg2)}
@@ -221,9 +228,7 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
     </div>
     <div class="topbar-right">
       <button class="btn btn-sm" id="btn-sync" onclick="syncNow()" style="display:none"><i class="ti ti-refresh"></i></button>
-      <button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> <span class="hide-xs">Suivi</span></button>
-      <button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i></button>
-      <button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> <span class="hide-xs">Ajouter</span></button>
+      <div id="topbar-actions"></div>
     </div>
   </div>
 
@@ -276,7 +281,7 @@ code{background:var(--bg2);border:0.5px solid var(--border);border-radius:4px;pa
         <!-- Session -->
         <div class="sidebar-section">
           <div class="sidebar-label">Session</div>
-          <button class="btn btn-block" onclick="changeUser()"><i class="ti ti-user-edit"></i> Changer utilisateur</button>
+          <button class="btn btn-block" onclick="changeUser()"><i class="ti ti-logout"></i> Changer de compte</button>
           <button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>
           <button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>
         </div>
@@ -305,6 +310,50 @@ const H_LOC=['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
 const H_SUIVI=['SITE','STATUT','INVENTORISTE','DATE_DEBUT','DATE_MAJ','OBSERVATIONS'];
 const H_EXPORT=['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT INVENTAIRE','NOUVEAU ARTICLE','PHOTOS'];
 const DRIVE_FOLDER_NAME='Inventaire_Photos';
+
+// ─── GESTION DES RÔLES ───────────────────────────────────────
+// admin    : accès complet + réinitialisation + export + suivi
+// user     : inventaire uniquement (pas de reset, pas d'export complet)
+// Pour ajouter un utilisateur : 'email@gmail.com': 'admin' ou 'user'
+const ROLES = {
+  'mounir.djammal@gmail.com': 'admin',
+  'operateurmafintec5@gmail.com': 'user',
+};
+const DEFAULT_ROLE = 'user'; // rôle par défaut si email non listé
+
+// Permissions par rôle
+const PERMISSIONS = {
+  admin: {
+    canExport: true,
+    canReset: true,
+    canSuivi: true,
+    canAddLocation: true,
+    canAddItem: true,
+    canEditItem: true,
+    canGenerateExport: true,
+    canManageRoles: true,
+  },
+  user: {
+    canExport: false,
+    canReset: false,
+    canSuivi: false,
+    canAddLocation: true,
+    canAddItem: true,
+    canEditItem: true,
+    canGenerateExport: false,
+    canManageRoles: false,
+  },
+};
+
+let currentRole = 'user';
+
+function getRole(email){
+  if(!email) return DEFAULT_ROLE;
+  return ROLES[email.toLowerCase()] || DEFAULT_ROLE;
+}
+function can(permission){
+  return !!(PERMISSIONS[currentRole]||PERMISSIONS.user)[permission];
+}
 let driveFolderId=null;
 
 // ─────────────────────────────────────────────────────────────
@@ -316,6 +365,7 @@ let siteStatuts={};  // {SITE: {statut,by,dateDebut,dateMaj,obs}}
 let curLoc={site:'',bat:'',etage:'',bureau:''};
 let gsConf={clientId:'',sheetId:''};
 let gTok=null,gTokExpiry=0,syncTimer=null,refreshTimer=null,isSyncing=false,lastSync=0;
+let googleProfile={name:'',email:'',picture:''};
 let pendingWrites=[];
 
 // ─────────────────────────────────────────────────────────────
@@ -323,18 +373,39 @@ let pendingWrites=[];
 // ─────────────────────────────────────────────────────────────
 function init(){
   loadLocal();loadGs();loadPhotos();
+  // Essayer de restaurer le profil Google en session
+  const profileRestored=restoreProfile();
   handleOAuth();
   // Restaurer token existant si pas de nouveau token dans l'URL
   if(!gTok && !window.location.hash.includes('access_token')){
     const restored=restoreToken();
-    if(restored && gsConf.sheetId){
-      // Token restauré - sync en arrière-plan sans recharger tout
-      setTimeout(()=>syncNow(), 500);
+    if(restored){
+      restoreProfile();
+      if(googleProfile.name){
+        currentUser=googleProfile.name;
+        renderUserBadge();
+        renderTopbarActions();
+        renderDataStatus();
+        if(gsConf.sheetId){
+          loadFromSheets(); // rechargement auto des données
+        } else {
+          renderMain();
+        }
+        return;
+      }
     }
   }
-  const u=localStorage.getItem(UK);
-  if(u){currentUser=u;setUserBadge();renderDataStatus();renderMain();}
-  else showLoginModal();
+  // Si pas de token Google mais nom sauvegardé localement
+  if(!gTok){
+    const u=localStorage.getItem(UK);
+    if(u&&!gsConf.clientId){
+      // Pas de config Google — mode local, garder l'ancien comportement
+      currentUser=u;setUserBadge();renderDataStatus();renderMain();
+    } else {
+      // Forcer connexion Google
+      showGoogleLoginModal();
+    }
+  }
 }
 function loadLocal(){try{const d=JSON.parse(localStorage.getItem(SK)||'{}');updates=d.u||{};newItems=d.ni||[];newLocs=d.nl||[];siteStatuts=d.ss||{};}catch(e){}}
 function saveLocal(){try{localStorage.setItem(SK,JSON.stringify({u:updates,ni:newItems,nl:newLocs,ss:siteStatuts,t:Date.now()}));}catch(e){}}
@@ -376,11 +447,19 @@ function handleOAuth(){
   history.replaceState(null,'',window.location.pathname+window.location.search);
   updateBadge('ok');
   document.getElementById('btn-sync').style.display='flex';
-  showToast('Connecté à Google Sheets ✓','success');
-  // Récupérer l'email pour le hint de refresh
-  fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+gTok}})
-    .then(r=>r.json()).then(info=>{ if(info.email)try{localStorage.setItem('inv_google_email',info.email);}catch(e){} }).catch(()=>{});
-  if(gsConf.sheetId)loadFromSheets();
+  // Récupérer le profil Google puis charger les données automatiquement
+  fetchGoogleProfile().then(()=>{
+    renderUserBadge();
+    renderTopbarActions();
+    renderDataStatus();
+    if(gsConf.sheetId){
+      closeModal();
+      loadFromSheets(); // chargement automatique après connexion
+    } else {
+      showToast('Connecté en tant que '+googleProfile.name,'success');
+      renderMain();
+    }
+  });
 }
 
 function setToken(tok, expiresIn){
@@ -462,6 +541,120 @@ function silentTokenRefresh(){
   document.body.appendChild(iframe);
 }
 
+async function fetchGoogleProfile(){
+  try{
+    const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+gTok}});
+    if(!r.ok)return;
+    const info=await r.json();
+    googleProfile={
+      name:info.name||info.given_name||info.email||'',
+      email:info.email||'',
+      picture:info.picture||''
+    };
+    // Définir le rôle selon l'email
+    currentRole=getRole(googleProfile.email);
+    // Persister pour restauration
+    try{
+      localStorage.setItem('inv_google_email',googleProfile.email);
+      localStorage.setItem('inv_role',currentRole);
+      sessionStorage.setItem('gProfile',JSON.stringify(googleProfile));
+    }catch(e){}
+    // Définir currentUser = nom Google
+    currentUser=googleProfile.name;
+    localStorage.setItem('inv_user',currentUser);
+  }catch(e){}
+}
+
+function restoreProfile(){
+  try{
+    const p=JSON.parse(sessionStorage.getItem('gProfile')||'{}');
+    if(p.name){
+      googleProfile=p;
+      currentUser=p.name;
+      currentRole=getRole(p.email)||localStorage.getItem('inv_role')||DEFAULT_ROLE;
+      localStorage.setItem('inv_user',currentUser);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+function openRolesPanel(){
+  if(!can('canManageRoles'))return;
+  const entries=Object.entries(ROLES);
+  const rows=entries.map(([email,role])=>{
+    const isAdmin=role==='admin';
+    return'<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border)">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+email+'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<span class="badge" style="'+(isAdmin?'background:#fff3cd;color:#856404':'background:var(--bg2);color:var(--text2)')+'">'
+      +(isAdmin?'<i class="ti ti-shield-check" style="font-size:11px"></i> Admin':'Utilisateur')+'</span>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+
+  showModal(
+    '<div class="modal-drag"></div>'
+    +'<div class="modal-head"><h2><i class="ti ti-shield"></i> Gestion des rôles</h2>'
+    +'<button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    +'<div class="modal-body">'
+    +'<div class="alert alert-info"><i class="ti ti-info-circle"></i>'
+    +'Pour modifier les rôles, éditez la table ROLES dans le fichier index.html et redéployez sur GitHub.</div>'
+    +'<div style="margin-bottom:14px">'
+    +'<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">Utilisateurs configurés ('+entries.length+')</div>'
+    +rows
+    +'</div>'
+    +'<div style="background:var(--bg2);border-radius:var(--radius);padding:12px;font-size:12px;color:var(--text2)">'
+    +'<div style="font-weight:600;margin-bottom:8px">Permissions par rôle :</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    +'<div><strong>Admin</strong><br>✓ Export Excel<br>✓ Réinitialisation<br>✓ Suivi des sites<br>✓ Ajout emplacement<br>✓ Gestion rôles</div>'
+    +'<div><strong>Utilisateur</strong><br>✗ Export<br>✗ Réinitialisation<br>✗ Suivi<br>✓ Ajout emplacement<br>✓ Inventaire articles<br>✓ Ajout article</div>'
+    +'</div></div>'
+    +'</div>'
+  );
+}
+
+
+function renderSidebarActions(){
+  const el=document.getElementById('sidebar-admin-btns');
+  if(!el)return;
+  let html='';
+  if(can('canExport')) html+='<button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>';
+  if(can('canReset')) html+='<button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>';
+  if(can('canManageRoles')) html+='<button class="btn btn-block" onclick="openRolesPanel()"><i class="ti ti-shield"></i> Gestion des rôles</button>';
+  el.innerHTML=html;
+}
+
+function renderTopbarActions(){
+  renderSidebarActions();
+  const el=document.getElementById('topbar-actions');
+  if(!el)return;
+  let html='';
+  if(can('canSuivi')) html+='<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> <span class="hide-xs">Suivi</span></button>';
+  html+='<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i></button>';
+  if(can('canAddItem')) html+='<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> <span class="hide-xs">Ajouter</span></button>';
+  el.innerHTML=html;
+}
+
+function renderUserBadge(){
+  const el=document.getElementById('user-area');
+  if(!el)return;
+  const roleBadge=currentRole==='admin'
+    ?'<span style="background:#fff3cd;color:#856404;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px"><i class="ti ti-shield-check" style="font-size:10px"></i> Admin</span>'
+    :'<span style="background:var(--bg2);color:var(--text3);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">Utilisateur</span>';
+  if(googleProfile.picture){
+    el.innerHTML='<div class="user-badge" style="padding:3px 10px 3px 4px;gap:7px">'
+      +'<img src="'+googleProfile.picture+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover" onerror="this.style.display=&quot;none&quot;">'
+      +'<span style="font-size:13px">'+googleProfile.name+'</span>'
+      +roleBadge
+      +'</div>';
+  } else {
+    el.innerHTML='<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i>'+googleProfile.name+roleBadge+'</div>';
+  }
+}
+
 function getStoredEmail(){
   try{return localStorage.getItem('inv_google_email')||'';}catch(e){return '';}
 }
@@ -471,7 +664,7 @@ function getStoredEmail(){
 // ─────────────────────────────────────────────────────────────
 async function sGet(range){
   if(gTok && Date.now()>gTokExpiry-30000){
-    // Token presque expiré - tenter refresh d'abord
+    // Token presque expiré - tenter refresh d’abord
     await new Promise(res=>setTimeout(res,500));
   }
   const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}`,{headers:{Authorization:'Bearer '+gTok}});
@@ -696,6 +889,15 @@ async function ensureSheets(){
 // ─────────────────────────────────────────────────────────────
 async function loadFromSheets(){
   if(!gTok||!gsConf.sheetId)return;
+  // Afficher écran de chargement dans le main
+  const main=document.getElementById('main');
+  if(main&&!DB.length){
+    main.innerHTML='<div class="empty">'
+      +'<div class="spinner" style="width:40px;height:40px;border-width:3px;margin:0 auto 20px"></div>'
+      +'<div style="font-size:16px;font-weight:600;margin-bottom:6px">Chargement des données…</div>'
+      +'<div style="font-size:13px;color:var(--text2)">Connexion au fichier Google Sheets</div>'
+      +'</div>';
+  }
   setSyncing(true,'Chargement…');
   try{
     await ensureSheets();
@@ -812,7 +1014,7 @@ async function writeSuivi(site,statut,obs){
 }
 
 async function generateExportFinal(){
-  if(!DB.length){showToast("Chargez d'abord les données",'warn');return;}
+  if(!DB.length){showToast("Chargez d’abord les données",'warn');return;}
   showToast('Génération export final…','info');
   try{
     await ensureSheets();
@@ -930,32 +1132,117 @@ async function saveAndLoad(){gsConf.clientId=(document.getElementById('gs-cid').
 // ─────────────────────────────────────────────────────────────
 //  UTILISATEUR
 // ─────────────────────────────────────────────────────────────
-function setUserBadge(){document.getElementById('user-area').innerHTML=`<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i>${currentUser}</div>`;}
-function showLoginModal(){
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head"><h2>Identification</h2></div>
-    <div class="modal-body">
-      <div class="alert alert-info"><i class="ti ti-info-circle"></i>Sélectionnez votre nom pour commencer</div>
-      <div class="form-group"><label class="form-label">Inventoriste</label>
-        <select id="u-sel" onchange="toggleCu(this)">
-          <option value="">-- Choisir --</option>
-          ${['Mounir','Fouad','Houssain','Nadir','Ayman M','Ayman G'].map(n=>`<option>${n}</option>`).join('')}
-          <option value="__c">Autre (saisir)…</option>
-        </select>
-      </div>
-      <div id="cu-area" style="display:none" class="form-group"><label class="form-label">Nom complet</label><input type="text" id="cu-inp" placeholder="Prénom Nom"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="confirmLogin()"><i class="ti ti-check"></i> Confirmer</button>
-    </div>`,'none');
+function setUserBadge(){
+  if(googleProfile.name){renderUserBadge();return;}
+  document.getElementById('user-area').innerHTML='<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i>'+(currentUser||'')+'</div>';
 }
-function toggleCu(s){document.getElementById('cu-area').style.display=s.value==='__c'?'block':'none';}
-function confirmLogin(){
-  let n=document.getElementById('u-sel').value;
-  if(n==='__c')n=(document.getElementById('cu-inp').value||'').trim();
-  if(!n||n==='__c'){showToast('Saisissez votre nom','warn');return;}
-  currentUser=n;localStorage.setItem(UK,n);closeModal();setUserBadge();renderDataStatus();renderMain();
+
+function showGoogleLoginModal(){
+  const hasClientId=!!gsConf.clientId;
+  const savedSheetId=gsConf.sheetId||'';
+  showModal(
+    '<div class="modal-drag"></div>'
+    +'<div class="modal-head"><h2>Connexion</h2></div>'
+    +'<div class="modal-body">'
+    +'<div style="text-align:center;padding:16px 0 20px">'
+    +'<i class="ti ti-building-warehouse" style="font-size:52px;color:var(--text3);display:block;margin-bottom:14px"></i>'
+    +'<div style="font-size:20px;font-weight:700;margin-bottom:6px">Inventaire Immobilisations</div>'
+    +'<div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.6">Connectez-vous pour accéder à l’inventaire</div>'
+    +'</div>'
+    // Champ Sheet ID — visible seulement si pas encore configuré
+    +(savedSheetId
+      ?'<div class="alert alert-success" style="margin-bottom:16px"><i class="ti ti-database"></i>'
+        +'<div><strong>Fichier Google Sheets configuré</strong><br>'
+        +'<span style="font-size:12px;opacity:.8">'+savedSheetId.substring(0,20)+'…</span></div>'
+        +'<button class="btn btn-sm" style="margin-left:auto" onclick="showLoginSheetArea()"><i class="ti ti-edit"></i></button>'
+        +'</div>'
+        +'<div id="login-sheet-area" style="display:none;margin-bottom:16px">'
+        +'<label class="form-label">Sheet ID</label>'
+        +'<input type="text" id="login-sheet-id" value="'+savedSheetId+'" placeholder="1BxiMVs0XRA5…" inputmode="url">'
+        +'</div>'
+      :'<div id="login-sheet-area" style="margin-bottom:16px">'
+        +'<label class="form-label"><i class="ti ti-table" style="font-size:13px"></i> Sheet ID du fichier Google Sheets *</label>'
+        +'<input type="text" id="login-sheet-id" value="'+savedSheetId+'" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" inputmode="url">'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:-6px">L’ID est dans l’URL du fichier : docs.google.com/spreadsheets/d/<strong>ID</strong>/edit</div>'
+        +'</div>')
+    // Bouton connexion Google
+    +(hasClientId
+      ?'<button class="btn btn-google" style="width:100%;justify-content:center;font-size:15px;min-height:52px" onclick="loginWithGoogle()">'
+        +'<svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 48 48">'
+        +'<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>'
+        +'<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>'
+        +'<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>'
+        +'<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>'
+        +'</svg> Se connecter avec Google</button>'
+      :'<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>'
+        +'<div>Client ID OAuth non configuré.<br>'
+        +'<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="closeModal();openGsPanel()">'
+        +'<i class="ti ti-settings"></i> Configurer OAuth</button></div></div>')
+    +'<div style="border-top:0.5px solid var(--border);margin-top:16px;padding-top:12px;text-align:center">'
+    +'<button class="btn btn-sm" onclick="showFallbackLogin()" style="color:var(--text3);font-size:12px">'
+    +'Mode local (sans Google)</button>'
+    +'</div>'
+    +'</div>'
+  ,'none');
 }
-function changeUser(){localStorage.removeItem(UK);currentUser=null;showLoginModal();}
+
+function showLoginSheetArea(){
+  var el=document.getElementById('login-sheet-area');
+  if(el)el.style.display='block';
+  var btn=document.querySelector('.alert-success .btn-sm');
+  if(btn)btn.style.display='none';
+}
+
+function loginWithGoogle(){
+  // Sauvegarder le SheetID saisi avant de rediriger
+  const sheetInp=document.getElementById('login-sheet-id');
+  if(sheetInp&&sheetInp.value.trim()){
+    gsConf.sheetId=sheetInp.value.trim();
+    saveGs();
+  }
+  if(!gsConf.sheetId){
+    showToast('Saisissez le Sheet ID d’abord','warn');
+    return;
+  }
+  closeModal();
+  googleSignIn();
+}
+
+function showFallbackLogin(){
+  // Connexion manuelle de secours
+  closeModal();
+  showModal(
+    '<div class="modal-drag"></div>'
+    +'<div class="modal-head"><h2>Connexion manuelle</h2></div>'
+    +'<div class="modal-body">'
+    +'<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Mode local — les données ne seront pas synchronisées.</div>'
+    +'<div class="form-group"><label class="form-label">Votre nom</label>'
+    +'<input type="text" id="cu-inp" placeholder="Prénom Nom"></div>'
+    +'<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="confirmFallbackLogin()">'
+    +'<i class="ti ti-check"></i> Continuer</button>'
+    +'</div>'
+  ,'none');
+}
+
+function confirmFallbackLogin(){
+  const n=(document.getElementById('cu-inp').value||'').trim();
+  if(!n){showToast('Saisissez votre nom','warn');return;}
+  currentUser=n;localStorage.setItem(UK,n);
+  closeModal();setUserBadge();renderDataStatus();renderMain();
+}
+
+function changeUser(){
+  // Déconnecter Google + reset user
+  disconnectGoogle();
+  currentUser=null;googleProfile={name:'',email:'',picture:''};
+  try{sessionStorage.removeItem('gProfile');}catch(e){}
+  localStorage.removeItem(UK);
+  showGoogleLoginModal();
+}
+
+function showLoginModal(){showGoogleLoginModal();}
+function toggleCu(){}
+function confirmLogin(){}
 
 // ─────────────────────────────────────────────────────────────
 //  CHARGEMENT EXCEL LOCAL
@@ -1224,58 +1511,157 @@ async function saveUpd(cbi){
   await writeUpd(cbi,u);
 }
 
+
+// ─────────────────────────────────────────────────────────────
+//  VÉRIFICATION DOUBLONS
+// ─────────────────────────────────────────────────────────────
+function findByCbi(cbi){
+  return [...DB,...newItems].find(r=>r.cbi===cbi&&!r._newLoc);
+}
+function findByCbe(cbe){
+  if(!cbe||cbe==='null'||cbe==='undefined'||cbe==='') return null;
+  return [...DB,...newItems].find(r=>r.cbe===cbe&&!r._newLoc);
+}
+function isLocExists(site,bat,etage,bureau){
+  return HIER[site]&&HIER[site][bat]&&HIER[site][bat][etage]&&HIER[site][bat][etage].includes(bureau);
+}
+
+let _doublonCbi=null;
+function editDoublon(){if(_doublonCbi){closeModal();openEditItem_cbi(_doublonCbi);}}
+
+function showDoublonModal(type,existing){
+  _doublonCbi=(type!=='loc')?existing.cbi:null;
+  const loc=[existing.site,existing.bat,existing.etage,existing.bureau].filter(Boolean).join(' › ');
+  const invInfo=(type!=='loc'&&updates[existing.cbi])
+    ?'<div style="margin-top:6px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> Déjà inventorié par '+updates[existing.cbi].by+'</div>'
+    :(type!=='loc'?'<div style="margin-top:6px;font-size:12px;color:var(--warn-txt)"><i class="ti ti-clock"></i> Non encore inventorié</div>':'');
+  const itemHtml=(type!=='loc')
+    ?'<div style="font-size:15px;font-weight:700;margin-bottom:4px">'+existing.art+'</div>'
+     +'<div style="font-size:13px;color:var(--text2);margin-bottom:8px">'+existing.fam+'</div>'
+     +'<div><span class="tag">CBI: '+existing.cbi+'</span>'+(existing.cbe?'<span class="tag">CBE: '+existing.cbe+'</span>':'')+'</div>'
+     +'<div style="margin-top:8px;padding:8px;background:var(--info-bg);border-radius:var(--radius);font-size:13px;color:var(--info-txt)"><i class="ti ti-map-pin"></i> '+loc+'</div>'
+     +invInfo
+    :'<div style="font-size:14px;color:var(--text2)">'+loc+'</div>';
+  const msg=(type==='cbi')
+    ?'Code barre IMMO <strong>'+existing.cbi+'</strong> déjà existant.'
+    :(type==='cbe')
+    ?'Code barre EMP <strong>'+existing.cbe+'</strong> déjà attribué.'
+    :'Cet emplacement existe déjà.';
+  const editBtn=(type!=='loc')
+    ?'<button class="btn btn-primary" onclick="editDoublon()"><i class="ti ti-edit"></i> Mettre à jour</button>'
+    :'';
+  showModal(
+    '<div class="modal-drag"></div>'
+    +'<div class="modal-head"><h2 style="color:var(--danger-txt)"><i class="ti ti-alert-circle"></i> Doublon</h2>'
+    +'<button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    +'<div class="modal-body">'
+    +'<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>'+msg+'</div>'
+    +'<div class="item-box">'+itemHtml+'</div>'
+    +'<div class="modal-actions">'+editBtn+'<button class="btn" onclick="closeModal()">Fermer</button></div>'
+    +'</div>'
+  );
+}
+
+function checkCbiField(inp){
+  const cbi=inp.value.trim();
+  const msg=document.getElementById('n-cbi-msg');
+  if(!cbi||!msg)return;
+  const exist=findByCbi(cbi);
+  if(exist){
+    inp.style.borderColor='var(--danger-txt)';
+    msg.style.cssText='font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)';
+    msg.innerHTML='⚠ Déjà existant : '+exist.art+' ('+exist.bureau+')';
+  }else{
+    inp.style.borderColor='var(--success-txt)';
+    msg.style.cssText='font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)';
+    msg.textContent='✓ Code barre disponible';
+  }
+}
+function checkCbeField(inp){
+  const cbe=inp.value.trim();
+  const msg=document.getElementById('n-cbe-msg');
+  if(!cbe||!msg)return;
+  const exist=findByCbe(cbe);
+  if(exist){
+    inp.style.borderColor='var(--danger-txt)';
+    msg.style.cssText='font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)';
+    msg.innerHTML='⚠ Déjà attribué : '+exist.art+' ('+exist.bureau+')';
+  }else{
+    inp.style.borderColor='var(--success-txt)';
+    msg.style.cssText='font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)';
+    msg.textContent='✓ Code barre disponible';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 //  AJOUTER ARTICLE
 // ─────────────────────────────────────────────────────────────
 function openAddItem(){
+  if(!can('canAddItem')){showToast('Accès refusé — rôle insuffisant','danger');return;}
   const fams=Object.keys(FAMS).sort();
-  if(!fams.length){showToast('Chargez d\'abord les données','warn');return;}
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      ${curLoc.bureau?`<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div style="font-size:13px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>`:'<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group"><label class="form-label">Code barre IMMO *</label><input type="text" id="n-cbi" placeholder="32012345" inputmode="none"></div>
-        <div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="n-cbe" placeholder="31000123" inputmode="none"></div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group"><label class="form-label">Famille *</label>
-          <select id="n-fam" onchange="nFamChange()">${fams.map(f=>`<option>${f}</option>`).join('')}</select></div>
-        <div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div>
-        <div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div>
-        <div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div>
-      </div>
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group"><label class="form-label">État de service</label><select id="n-sv">${ES.map(x=>`<option>${x}</option>`).join('')}</select></div>
-        <div class="form-group"><label class="form-label">Renouvelabilité</label><select id="n-rv">${ER.map(x=>`<option>${x}</option>`).join('')}</select></div>
-      </div>
-      <div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Annuler</button>
-        <button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button>
-      </div>
-    </div>`);
+  if(!fams.length){showToast("Chargez d’abord les données",'warn');return;}
+  showModal(
+    '<div class="modal-drag"></div>'
+    +'<div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>'
+    +'<div class="modal-body">'
+    +(curLoc.bureau
+      ?'<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div style="font-size:13px">'+curLoc.site+' › '+curLoc.bat+' › '+curLoc.etage+' › '+curLoc.bureau+'</div></div>'
+      :'<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>')
+    +'<div class="form-row" style="margin-bottom:14px">'
+    +'<div class="form-group"><label class="form-label">Code barre IMMO *</label>'
+    +'<input type="text" id="n-cbi" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)">'
+    +'<div id="n-cbi-msg" style="display:none"></div></div>'
+    +'<div class="form-group"><label class="form-label">Code barre EMP</label>'
+    +'<input type="text" id="n-cbe" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)">'
+    +'<div id="n-cbe-msg" style="display:none"></div></div>'
+    +'</div>'
+    +'<div class="form-row" style="margin-bottom:14px">'
+    +'<div class="form-group"><label class="form-label">Famille *</label>'
+    +'<select id="n-fam" onchange="nFamChange()">'+Object.keys(FAMS).sort().map(function(f){return'<option>'+f+'</option>';}).join('')+'</select></div>'
+    +'<div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div>'
+    +'</div>'
+    +'<div class="form-row" style="margin-bottom:14px">'
+    +'<div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div>'
+    +'<div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div>'
+    +'</div>'
+    +'<div class="form-row" style="margin-bottom:14px">'
+    +'<div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div>'
+    +'<div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div>'
+    +'</div>'
+    +'<div class="form-row" style="margin-bottom:14px">'
+    +'<div class="form-group"><label class="form-label">État de service</label>'
+    +'<select id="n-sv">'+ES.map(function(x){return'<option>'+x+'</option>';}).join('')+'</select></div>'
+    +'<div class="form-group"><label class="form-label">Renouvelabilité</label>'
+    +'<select id="n-rv">'+ER.map(function(x){return'<option>'+x+'</option>';}).join('')+'</select></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div>'
+    +'<div class="modal-actions">'
+    +'<button class="btn" onclick="closeModal()">Annuler</button>'
+    +'<button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button>'
+    +'</div></div>'
+  );
   nFamChange();
 }
-function nFamChange(){const f=document.getElementById('n-fam').value;document.getElementById('n-art').innerHTML=(FAMS[f]||[]).map(a=>`<option>${a}</option>`).join('');}
+function nFamChange(){const f=document.getElementById('n-fam').value;document.getElementById('n-art').innerHTML=(FAMS[f]||[]).map(function(a){return'<option>'+a+'</option>';}).join('');}
 async function saveNew(){
   const cbi=document.getElementById('n-cbi').value.trim();
+  const cbe=document.getElementById('n-cbe').value.trim();
   if(!cbi){showToast('Code barre IMMO requis','warn');return;}
-  if([...DB,...newItems].find(r=>r.cbi===cbi)){showToast('Code barre déjà existant','danger');return;}
-  const item={...curLoc,cbi,cbe:document.getElementById('n-cbe').value.trim(),
-    fam:document.getElementById('n-fam').value,art:document.getElementById('n-art').value,
-    marque:document.getElementById('n-marque').value,modele:document.getElementById('n-modele').value,
-    serie:document.getElementById('n-serie').value,qty:parseInt(document.getElementById('n-qty').value)||1,
-    serv:document.getElementById('n-sv').value,renouv:document.getElementById('n-rv').value,
-    obs:document.getElementById('n-obs').value,prod:'',dir:'',patrim:'',nom_inv:'',
-    _new:true,_addedBy:currentUser,_addedAt:Date.now()};
+  const existCbi=findByCbi(cbi);
+  if(existCbi){showDoublonModal('cbi',existCbi);return;}
+  if(cbe){const existCbe=findByCbe(cbe);if(existCbe){showDoublonModal('cbe',existCbe);return;}}
+  const item=Object.assign({},curLoc,{cbi,cbe,
+    fam:document.getElementById('n-fam').value,
+    art:document.getElementById('n-art').value,
+    marque:document.getElementById('n-marque').value,
+    modele:document.getElementById('n-modele').value,
+    serie:document.getElementById('n-serie').value,
+    qty:parseInt(document.getElementById('n-qty').value)||1,
+    serv:document.getElementById('n-sv').value,
+    renouv:document.getElementById('n-rv').value,
+    obs:document.getElementById('n-obs').value,
+    prod:'',dir:'',patrim:'',nom_inv:'',
+    _new:true,_addedBy:currentUser,_addedAt:Date.now()});
   newItems.push(item);
   updates[cbi]={serv:item.serv,renouv:item.renouv,obs:item.obs,by:currentUser,ts:Date.now()};
   saveLocal();closeModal();renderMain();renderDataStatus();
@@ -1283,335 +1669,142 @@ async function saveNew(){
   await writeNI(item);await writeUpd(cbi,updates[cbi]);
 }
 
-// ─────────────────────────────────────────────────────────────
-//  AJOUTER EMPLACEMENT
-// ─────────────────────────────────────────────────────────────
-function openAddLocation(){
-  const sites=Object.keys(HIER).sort();
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head"><h2>Ajouter un emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div class="form-group"><label class="form-label">Site *</label>
-        <select id="al-site" onchange="alSite()">
-          ${sites.map(s=>`<option>${s}</option>`).join('')}<option value="__n">+ Nouveau site…</option>
-        </select>
-        <input type="text" id="al-site-n" placeholder="Nom du site" style="display:none;margin-top:8px">
-      </div>
-      <div class="form-group"><label class="form-label">Bâtiment *</label>
-        <select id="al-bat" onchange="alBat()"><option value="">-- Choisir --</option></select>
-        <input type="text" id="al-bat-n" placeholder="Nom du bâtiment" style="display:none;margin-top:8px">
-      </div>
-      <div class="form-group"><label class="form-label">Étage *</label>
-        <select id="al-etage" onchange="alEtage()"><option value="">-- Choisir --</option></select>
-        <input type="text" id="al-etage-n" placeholder="Ex: RDC, ETAGE 1…" style="display:none;margin-top:8px">
-      </div>
-      <div class="form-group"><label class="form-label">Bureau / Local *</label>
-        <select id="al-bureau" onchange="alBureau()"><option value="">-- Choisir --</option></select>
-        <input type="text" id="al-bureau-n" placeholder="Nom du bureau" style="display:none;margin-top:8px">
-      </div>
-      <div class="form-row" style="margin-bottom:0">
-        <div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="al-cbe" placeholder="31000999" inputmode="none"></div>
-        <div class="form-group"><label class="form-label">Type</label><input type="text" id="al-type" placeholder="BUREAU, SALLE…"></div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" onclick="closeModal()">Annuler</button>
-        <button class="btn btn-primary" onclick="saveLoc()"><i class="ti ti-map-pin"></i> Créer</button>
-      </div>
-    </div>`);
-  alSite();
+
+function decodeBC(level){
+  if(level===0) return drillState.site;
+  if(level===1) return drillState.bat;
+  return drillState.etage;
 }
-function alSite(){
-  const v=document.getElementById('al-site').value;
-  document.getElementById('al-site-n').style.display=v==='__n'?'block':'none';
-  const bb=document.getElementById('al-bat');bb.innerHTML='<option value="">-- Choisir --</option>';
-  if(v&&v!=='__n'&&HIER[v])Object.keys(HIER[v]).sort().forEach(b=>bb.innerHTML+=`<option>${b}</option>`);
-  bb.innerHTML+='<option value="__n">+ Nouveau bâtiment…</option>';alBat();
-}
-function alBat(){
-  const site=document.getElementById('al-site').value,bat=document.getElementById('al-bat').value;
-  document.getElementById('al-bat-n').style.display=bat==='__n'?'block':'none';
-  const ee=document.getElementById('al-etage');ee.innerHTML='<option value="">-- Choisir --</option>';
-  if(site&&site!=='__n'&&bat&&bat!=='__n'&&HIER[site]&&HIER[site][bat])Object.keys(HIER[site][bat]).sort().forEach(e=>ee.innerHTML+=`<option>${e}</option>`);
-  ee.innerHTML+='<option value="__n">+ Nouvel étage…</option>';alEtage();
-}
-function alEtage(){
-  const site=document.getElementById('al-site').value,bat=document.getElementById('al-bat').value,etage=document.getElementById('al-etage').value;
-  document.getElementById('al-etage-n').style.display=etage==='__n'?'block':'none';
-  const bu=document.getElementById('al-bureau');bu.innerHTML='<option value="">-- Choisir --</option>';
-  if(site&&site!=='__n'&&bat&&bat!=='__n'&&etage&&etage!=='__n'&&HIER[site]&&HIER[site][bat]&&HIER[site][bat][etage])HIER[site][bat][etage].forEach(b=>bu.innerHTML+=`<option>${b}</option>`);
-  bu.innerHTML+='<option value="__n">+ Nouveau bureau…</option>';
-  document.getElementById('al-bureau-n').style.display='none';
-}
-function alBureau(){document.getElementById('al-bureau-n').style.display=document.getElementById('al-bureau').value==='__n'?'block':'none';}
-function rf(si,ni){const v=document.getElementById(si).value;if(v==='__n'||!v)return(document.getElementById(ni).value||'').trim()||null;return v||null;}
-async function saveLoc(){
-  const site=rf('al-site','al-site-n'),bat=rf('al-bat','al-bat-n'),etage=rf('al-etage','al-etage-n'),bureau=rf('al-bureau','al-bureau-n');
-  if(!site||!bat||!etage||!bureau){showToast('Tous les niveaux sont requis','warn');return;}
-  if(HIER[site]&&HIER[site][bat]&&HIER[site][bat][etage]&&HIER[site][bat][etage].includes(bureau)){showToast('Emplacement déjà existant','warn');return;}
-  if(!HIER[site])HIER[site]={};if(!HIER[site][bat])HIER[site][bat]={};if(!HIER[site][bat][etage])HIER[site][bat][etage]=[];
-  HIER[site][bat][etage].push(bureau);HIER[site][bat][etage].sort();
-  const cbe=(document.getElementById('al-cbe').value||'').trim();
-  const type=(document.getElementById('al-type').value||'').trim();
-  const loc={site,bat,etage,bureau,cbe,type,_addedBy:currentUser,_addedAt:Date.now()};
-  newLocs.push(loc);
-  newItems.push({site,bat,etage,bureau,cbi:'LOC_'+Date.now(),cbe,fam:'',art:'(Emplacement)',qty:0,renouv:'BON',serv:'EN SERVICE',obs:'',serie:'',modele:'',marque:'',prod:'',dir:'',patrim:'',nom_inv:'',_newLoc:true,_addedBy:currentUser,_addedAt:Date.now()});
-  saveLocal();
-  const ss=document.getElementById('sel-site');
-  ss.innerHTML='<option value="">-- Site --</option>'+Object.keys(HIER).sort().map(s=>`<option value="${s}">${s}</option>`).join('');
-  closeModal();navigateTo(site,bat,etage,bureau);
-  renderDataStatus();showToast('Emplacement créé : '+bureau,'success');
-  await writeNL(loc);
+function drillTo(site, bat, etage){
+  drillState={site,bat,etage};
+  renderDashboard();
 }
 
-// ─────────────────────────────────────────────────────────────
-//  EXPORT
-// ─────────────────────────────────────────────────────────────
-function openExport(){
-  const ti=Object.keys(updates).length,tn=newItems.filter(r=>r._new&&!r._newLoc).length;
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div>
-      <button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button>
-      <button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${!DB.length||!gTok?'disabled':''}>  <i class="ti ti-table-export"></i> Export final dans Google Sheets</button>
-      <button class="btn btn-block" onclick="expAll()" ${!DB.length?'disabled':''}><i class="ti ti-database-export"></i> Base complète (Excel)</button>
-    </div>`);
-}
-function expUpd(){
-  const rows=Object.entries(updates).map(([cbi,u])=>{const o=[...DB,...newItems].find(r=>r.cbi===cbi)||{};return{'CBI':cbi,'CBE':o.cbe||'','SITE':o.site||'','BATIMENT':o.bat||'','ETAGE':o.etage||'','BUREAU':o.bureau||'','ARTICLE':o.art||'','FAMILLE':o.fam||'','ETAT SERVICE':u.serv,'RENOUV':u.renouv,'OBS':u.obs,'ARTICLE TROUVE':u.trouve||'','INVENTORISTE':u.by,'DATE':new Date(u.ts).toLocaleDateString('fr-FR'),'NOUVEAU':o._new?'OUI':'NON'};});
-  dlX(rows,'inv_updates');closeModal();showToast('Export téléchargé','success');
-}
-function expAll(){
-  if(!DB.length)return;
-  const rows=[...DB,...newItems.filter(r=>!r._newLoc)].map(r=>{const u=updates[r.cbi]||{};return{'CBI':r.cbi,'CBE':r.cbe,'SITE':r.site,'BAT':r.bat,'ETAGE':r.etage,'BUREAU':r.bureau,'FAM':r.fam,'ART':r.art,'QTE':r.qty,'SERV':u.serv||r.serv,'RENOUV':u.renouv||r.renouv,'OBS':u.obs!==undefined?u.obs:r.obs,'ARTICLE TROUVE':u.trouve||'','MARQUE':r.marque,'MODELE':r.modele,'SERIE':r.serie,'DIR':r.dir,'INVENTORISTE':u.by||r.nom_inv||'','DATE':u.ts?new Date(u.ts).toLocaleDateString('fr-FR'):'','STATUT':updates[r.cbi]?'INVENTORIE':'EN ATTENTE','NOUVEAU':r._new?'OUI':'NON'};});
-  dlX(rows,'inv_complet');closeModal();showToast('Export téléchargé','success');
-}
-function dlX(rows,name){
-  const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Inventaire');
-  XLSX.writeFile(wb,`${name}_${new Date().toISOString().split('T')[0]}.xlsx`);
-}
-function resetUpdates(){
-  if(!confirm('Réinitialiser les données locales ?'))return;
-  updates={};newItems=[];newLocs=[];pendingWrites=[];saveLocal();renderMain();renderDataStatus();showToast('Réinitialisé','success');
+function getItemsAt(site, bat, etage, bureau){
+  return [...DB,...newItems].filter(r=>{
+    if(r._newLoc) return false;
+    if(site && r.site!==site) return false;
+    if(bat  && r.bat!==bat)   return false;
+    if(etage && r.etage!==etage) return false;
+    if(bureau && r.bureau!==bureau) return false;
+    return true;
+  });
 }
 
+function makeProgressRow(label, items, onclick, sublabel, isLeaf){
+  if(!items.length) return '';
+  const inv=items.filter(r=>updates[r.cbi]).length;
+  const pct=Math.round(inv/items.length*100);
+  const trouve=items.filter(r=>(updates[r.cbi]?.trouve||'')==='OUI').length;
+  const nonTrouve=items.filter(r=>(updates[r.cbi]?.trouve||'')==='NON').length;
+  const horsSrv=items.filter(r=>(updates[r.cbi]?.serv||r.serv)!=='EN SERVICE').length;
 
-// ─────────────────────────────────────────────────────────────
-//  SUIVI PAR SITE
-// ─────────────────────────────────────────────────────────────
-function openSuiviPanel(){
-  if(!DB.length){showToast("Chargez d'abord les données",'warn');return;}
-  const sites=Object.keys(HIER).sort();
-  const rows=sites.map(site=>{
-    const allItems=[...DB,...newItems].filter(r=>r.site===site&&!r._newLoc);
-    const inv=allItems.filter(r=>updates[r.cbi]).length;
-    const pct=allItems.length?Math.round(inv/allItems.length*100):0;
-    const st=siteStatuts[site]||{statut:'NON OUVERT'};
-    const dotClass=st.statut==='TERMINE'?'dot-ok':st.statut==='EN COURS'?'dot-ec':'dot-no';
-    const statutColor=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text3)';
-    const opts=STATUTS_SITE.map(s=>`<option value="${s}"${st.statut===s?' selected':''}>${s}</option>`).join('');
-    return`<div class="site-card" id="sc-${site.replace(/\s/g,'_')}">
-      <div class="statut-dot ${dotClass}"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div>
-        <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div>
-        <div style="margin-top:6px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>${pct}%</span></div>
-          <div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div>
+  const barColor=pct===100?'var(--success-txt)':pct>50?'var(--warn-txt)':'var(--info-txt)';
+  const clickable=!isLeaf;
+
+  return`<div class="hier-row${clickable?' clickable':''}" ${clickable?'onclick="'+onclick+'"':''} style="${clickable?'cursor:pointer':''}">
+    <div class="hier-row-top">
+      <div class="hier-row-label">
+        ${clickable?`<i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>`:`<i class="ti ti-door" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>`}
+        <div>
+          <div style="font-size:14px;font-weight:600">${label}</div>
+          ${sublabel?`<div style="font-size:11px;color:var(--text3)">${sublabel}</div>`:''}
         </div>
-        ${st.by?`<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>`:''}
       </div>
-      <div class="site-statut">
-        <select onchange="changeSiteStatut('${site}',this.value)" style="color:${statutColor};font-weight:600">${opts}</select>
-      </div>
-    </div>`;
-  }).join('');
-
-  const totAll=[...DB,...newItems].filter(r=>!r._newLoc).length;
-  const totInv=Object.keys(updates).length;
-  const totPct=totAll?Math.round(totInv/totAll*100):0;
-
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head">
-      <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final dans Sheets"><i class="ti ti-table-export"></i></button>
-        <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      <div class="hier-row-stats">
+        <div style="text-align:right">
+          <div style="font-size:15px;font-weight:700;color:${barColor}">${pct}%</div>
+          <div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div>
+        </div>
+        ${isLeaf?`<div style="display:flex;flex-direction:column;gap:3px;min-width:80px">
+          ${trouve?`<span style="font-size:11px;color:var(--success-txt)">✓ Trouvés: ${trouve}</span>`:''}
+          ${nonTrouve?`<span style="font-size:11px;color:var(--danger-txt)">✗ Non trouvés: ${nonTrouve}</span>`:''}
+          ${horsSrv?`<span style="font-size:11px;color:var(--warn-txt)">⚠ Hors service: ${horsSrv}</span>`:''}
+        </div>`:''}
       </div>
     </div>
-    <div class="modal-body">
-      <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:14px;font-weight:700">Avancement global</div>
-          <div style="font-size:20px;font-weight:700">${totPct}%</div>
-        </div>
-        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
-        <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
-      </div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px">
-        <span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span>
-        <span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span>
-        <span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span>
-      </div>
-      ${rows}
-      <div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)">
-        <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
-      </div>
-    </div>`);
+    <div style="margin-top:8px">
+      <div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+    </div>
+    ${isLeaf&&items.length?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+      ${items.slice(0,6).map(r=>{
+        const ok=!!updates[r.cbi];
+        const sv=updates[r.cbi]?.serv||r.serv;
+        const dot=ok?(sv==='EN SERVICE'?'var(--success-txt)':'var(--warn-txt)'):'var(--border2)';
+        return`<div title="${r.art}" style="width:10px;height:10px;border-radius:50%;background:${dot};flex-shrink:0"></div>`;
+      }).join('')}
+      ${items.length>6?`<span style="font-size:10px;color:var(--text3)">+${items.length-6}</span>`:''}
+    </div>`:''}
+  </div>`;
 }
 
-async function changeSiteStatut(site,statut){
-  await writeSuivi(site,statut,'');
-  openSuiviPanel(); // refresh
-  renderMain();
-  showToast(`${site} → ${statut}`,'success');
-}
+function renderHierView(){
+  const el=document.getElementById('hier-view');
+  if(!el) return;
+  const {site,bat,etage}=drillState;
+  let html='';
 
-// ─────────────────────────────────────────────────────────────
-//  SCAN LIBRE — recherche indépendante de l'emplacement
-// ─────────────────────────────────────────────────────────────
-function openScanLibre(){
-  showModal(`
-    <div class="modal-drag"></div>
-    <div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n'importe quel code barre — l'article est recherché dans toute la base, quel que soit l'emplacement.</div>
-      <div class="scan-libre-zone">
-        <i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i>
-        <input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus>
-        <div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div>
-      </div>
-      <div id="scan-libre-result"></div>
-    </div>`);
-  setTimeout(()=>{const el=document.getElementById('scan-libre-inp');if(el)el.focus();},100);
-}
+  if(!site){
+    // Niveau 1 : Sites
+    const sites=Object.keys(HIER).sort();
+    html=sites.map(s=>{
+      const items=getItemsAt(s,null,null,null);
+      const st=siteStatuts[s]||{statut:'NON OUVERT'};
+      const stColor=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text3)';
+      const sublabel=`<span style="color:${stColor};font-weight:600">${st.statut}</span>`;
+      return makeProgressRow(s, items, `drillTo('${s}',null,null)`, sublabel, false);
+    }).join('');
 
-function onScanLibreKey(e){
-  if(e.key!=='Enter')return;
-  const v=e.target.value.trim();if(!v)return;
-  scanLibreSearch(v);
-}
+  } else if(!bat){
+    // Niveau 2 : Bâtiments d'un site
+    const bats=Object.keys(HIER[site]||{}).sort();
+    html=bats.map(b=>{
+      const items=getItemsAt(site,b,null,null);
+      return makeProgressRow(b, items, `drillTo('${site}','${b}',null)`, items.length+' articles', false);
+    }).join('');
 
-function scanLibreSearch(val){
-  const all=[...DB,...newItems].filter(r=>!r._newLoc);
-  const found=all.filter(r=>r.cbi===val||r.cbe===val);
-  const res=document.getElementById('scan-libre-result');
-  if(!res)return;
+  } else if(!etage){
+    // Niveau 3 : Étages d'un bâtiment
+    const etages=Object.keys((HIER[site]||{})[bat]||{}).sort();
+    html=etages.map(e=>{
+      const items=getItemsAt(site,bat,e,null);
+      const bureaux=((HIER[site]||{})[bat]||{})[e]||[];
+      return makeProgressRow(e, items, `drillTo('${site}','${bat}','${e}')`, bureaux.length+' bureau(x) · '+items.length+' articles', false);
+    }).join('');
 
-  if(!found.length){
-    res.innerHTML=`<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable dans la base</div>`;
-    return;
+  } else {
+    // Niveau 4 : Bureaux d'un étage — vue feuille
+    const bureaux=(((HIER[site]||{})[bat]||{})[etage]||[]).sort();
+    html=bureaux.map(b=>{
+      const items=getItemsAt(site,bat,etage,b);
+      const navigateBtn=`<button class="btn btn-sm" style="margin-top:8px;width:100%" onclick="navigateTo('${site}','${bat}','${etage}','${b}');closeSidebar()"><i class="ti ti-arrow-right"></i> Aller à ce bureau</button>`;
+      return makeProgressRow(b, items, '', items.length+' article(s)', true)+
+        (items.length?`<div style="margin:-8px 0 8px;padding:0 14px 10px">${navigateBtn}</div>`:'');
+    }).join('');
   }
 
-  // Multiple results if item moved (same cbi, different location in newItems)
-  const cards=found.map(item=>{
-    const u=updates[item.cbi]||{};
-    const sv=u.serv||item.serv,rv=u.renouv||item.renouv;
-    const sc=sv==='EN SERVICE'?'b-service':sv==='HORS SERVICE'?'b-hors':'b-rebut';
-    const rc=rv==='BON'?'b-bon':rv==='MOYEN'?'b-moyen':'b-vetuste';
-    const isInv=!!updates[item.cbi];
-    const tr=u.trouve||'';
-    return`<div class="found-card">
-      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        <span class="tag"><i class="ti ti-barcode" style="font-size:11px"></i> ${item.cbi}</span>
-        ${item.marque?`<span class="tag">${item.marque}</span>`:''}
-        ${item.serie?`<span class="tag">SN: ${item.serie}</span>`:''}
-      </div>
-      <div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px">
-        <i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="badge ${sc}">${sv}</span>
-        <span class="badge ${rc}">${rv}</span>
-        ${isInv?`<span class="badge b-service">✓ Inventorié par ${u.by}</span>`:''}
-        ${tr==='OUI'?`<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>`:''}
-        ${tr==='NON'?`<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>`:''}
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" onclick="openEditFromScanLibre('${item.cbi}')"><i class="ti ti-edit"></i> Mettre à jour</button>
-        <button class="btn btn-sm" onclick="navigateTo('${item.site}','${item.bat}','${item.etage}','${item.bureau}');closeModal()"><i class="ti ti-arrow-right"></i> Aller à l'emplacement</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  res.innerHTML=`<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`;
+  el.innerHTML=html||'<div style="text-align:center;padding:30px;color:var(--text2);font-size:14px">Aucun emplacement</div>';
 }
 
-function openEditFromScanLibre(cbi){
-  const item=[...DB,...newItems].find(r=>r.cbi===cbi);
-  if(!item)return;
-  closeModal();
-  setTimeout(()=>openEditItem(item),100);
-}
-
-// ─────────────────────────────────────────────────────────────
-//  DASHBOARD
-// ─────────────────────────────────────────────────────────────
-function renderDashboard(){
-  const main=document.getElementById('main');
-  const tot=DB.length+newItems.filter(r=>!r._newLoc).length,inv=Object.keys(updates).length;
-  const pct=tot?Math.round(inv/tot*100):0;
-  const byU={};for(const cbi in updates){const u=updates[cbi];byU[u.by]=(byU[u.by]||0)+1;}
+function renderByUser(){
+  const byU={};
+  for(const cbi in updates){const u=updates[cbi];byU[u.by]=(byU[u.by]||0)+1;}
+  if(!Object.keys(byU).length) return '';
   const mx=Math.max(...Object.values(byU),1);
-  const synInfo=lastSync?`Sync: ${new Date(lastSync).toLocaleTimeString('fr-FR')}`:(gTok?'Connecté':'Non connecté');
-  main.innerHTML=`
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap">
-      <div><div style="font-size:18px;font-weight:700;margin-bottom:4px">Tableau de bord</div>
-      <div style="font-size:13px;color:var(--text2)">${synInfo}</div></div>
-      ${gTok?`<button class="btn btn-sm" onclick="syncNow()"><i class="ti ti-refresh"></i> Sync</button>`:`<button class="btn btn-sm" onclick="openGsPanel()"><i class="ti ti-brand-google"></i> Connecter</button>`}
+  return`<div style="margin-top:16px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:10px">Par inventoriste</div>
+    <div class="dash-card">
+      ${Object.entries(byU).sort((a,b)=>b[1]-a[1]).map(([n,cnt])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:14px">
+          <div>${n}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.round(cnt/mx*100)}%"></div></div>
+            <strong style="min-width:28px;text-align:right">${cnt}</strong>
+          </div>
+        </div>`).join('')}
     </div>
-    <div class="stats-row">
-      <div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div>
-      <div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.toLocaleString('fr-FR')}</div></div>
-      <div class="stat-card"><div class="stat-lbl">Restant</div><div class="stat-val" style="color:var(--text2)">${(tot-inv).toLocaleString('fr-FR')}</div></div>
-      <div class="stat-card"><div class="stat-lbl">%</div><div class="stat-val">${pct}%</div></div>
-    </div>
-    <div class="pbar" style="height:12px;margin-bottom:20px;border-radius:6px"><div class="pbar-fill" style="width:${pct}%;border-radius:6px"></div></div>
-    <div class="dash-grid">
-      <div class="dash-card">
-        <div style="font-size:14px;font-weight:700;margin-bottom:12px">Par inventoriste</div>
-        ${Object.entries(byU).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:14px">
-            <div>${n}</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.round(c/mx*100)}%"></div></div>
-              <strong style="min-width:28px;text-align:right">${c}</strong>
-            </div>
-          </div>`).join('')||'<div style="color:var(--text2);font-size:14px">Aucune mise à jour</div>'}
-      </div>
-      <div class="dash-card">
-        <div style="font-size:14px;font-weight:700;margin-bottom:12px">Nouveaux articles (${newItems.filter(r=>r._new&&!r._newLoc).length})</div>
-        ${!newItems.filter(r=>r._new&&!r._newLoc).length?'<div style="color:var(--text2);font-size:14px">Aucun</div>':
-          newItems.filter(r=>r._new&&!r._newLoc).slice(0,8).map(r=>`<div style="padding:7px 0;border-bottom:0.5px solid var(--border)"><div style="font-weight:600;font-size:14px">${r.art}</div><div style="color:var(--text2);font-size:12px">${r.bureau} — ${r._addedBy}</div></div>`).join('')}
-      </div>
-    </div>
-    <div style="margin-top:16px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:10px">État par site</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
-        ${Object.keys(HIER).sort().map(site=>{
-          const st=siteStatuts[site]||{statut:'NON OUVERT'};
-          const allS=[...DB,...newItems].filter(r=>r.site===site&&!r._newLoc);
-          const invS=allS.filter(r=>updates[r.cbi]).length;
-          const pctS=allS.length?Math.round(invS/allS.length*100):0;
-          const bg=st.statut==='TERMINE'?'var(--success-bg)':st.statut==='EN COURS'?'var(--warn-bg)':'var(--bg2)';
-          const tc=st.statut==='TERMINE'?'var(--success-txt)':st.statut==='EN COURS'?'var(--warn-txt)':'var(--text2)';
-          return`<div style="background:${bg};border-radius:var(--radius);padding:12px;cursor:pointer" onclick="openSuiviPanel()">
-            <div style="font-size:13px;font-weight:700;color:${tc};margin-bottom:4px">${site}</div>
-            <div style="font-size:12px;color:${tc};opacity:.8;margin-bottom:6px">${st.statut}</div>
-            <div class="pbar"><div class="pbar-fill" style="width:${pctS}%;background:${tc}"></div></div>
-            <div style="font-size:11px;color:${tc};opacity:.7;margin-top:3px">${pctS}%</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
+  </div>`;
 }
-
 // ─────────────────────────────────────────────────────────────
 //  MODAL / TOAST
 // ─────────────────────────────────────────────────────────────
