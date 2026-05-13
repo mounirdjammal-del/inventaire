@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 3.9 -->
+<!-- VERSION 4.0 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -371,6 +371,7 @@ const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.google
 const APP_SHEET_ID  = '1dOkNOh9XBBJzyrS6dd1lrGzt1Rr4Xsg3AYYGDABM5GM';
 // ─────────────────────────────────────────────────────────────
 let gsConf={clientId:APP_CLIENT_ID,sheetId:APP_SHEET_ID};
+let drillState={site:null,bat:null,etage:null};
 let gTok=null,gTokExpiry=0,syncTimer=null,refreshTimer=null,isSyncing=false,lastSync=0;
 let googleProfile={name:'',email:'',picture:''};
 let pendingWrites=[];
