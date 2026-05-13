@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.4 -->
+<!-- VERSION 4.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -489,13 +489,16 @@ function init(){
       updateBadge('ok');
       const bsync = document.getElementById('btn-sync');
       if(bsync) bsync.style.display='flex';
-      // Récupérer profil → charger données
-      fetchGoogleProfile().then(()=>{
+      // Récupérer profil d'abord, PUIS tout le reste
+      (async()=>{
+        await fetchGoogleProfile();
         renderUserBadge();
         renderTopbarActions();
         renderDataStatus();
-        loadFromSheets();
-      });
+        goView('home');
+        await loadFromSheets();
+        renderUserBadge(); // Re-render après chargement pour s'assurer
+      })();
       return;
     }
   }
@@ -513,7 +516,7 @@ function init(){
       renderTopbarActions();
       renderDataStatus();
       goView('home');
-      loadFromSheets();
+      loadFromSheets(); // async en arrière-plan
       return;
     }
   }
@@ -1027,8 +1030,7 @@ async function loadFromSheets(){
     showToast(DB.length.toLocaleString('fr-FR')+' articles chargés','success');
     startAutoSync();
     renderUserBadge();
-    renderTopbarActions();
-    goView('home'); // Afficher l'accueil après chargementment
+    goView('home');ment
   }catch(err){showToast('Erreur: '+err.message,'danger');}
   setSyncing(false);
 }
