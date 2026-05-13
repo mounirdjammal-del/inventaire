@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.5 -->
+<!-- VERSION 4.6 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1030,7 +1030,7 @@ async function loadFromSheets(){
     showToast(DB.length.toLocaleString('fr-FR')+' articles chargés','success');
     startAutoSync();
     renderUserBadge();
-    goView('home');ment
+    goView('home');
   }catch(err){showToast('Erreur: '+err.message,'danger');}
   setSyncing(false);
 }
