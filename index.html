@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 4.6 -->
+<!-- VERSION 4.7 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -349,6 +349,12 @@ const ROLES = {
   'mounir.djammal@gmail.com': 'admin',
   'operateurmafintec5@gmail.com': 'user',
 };
+
+// Noms affichés par email — indépendant de l'API Google
+const USER_NAMES = {
+  'mounir.djammal@gmail.com':    'Mounir DJAMMAL',
+  'operateurmafintec5@gmail.com':'Nadir Chaqour',
+};
 const DEFAULT_ROLE = 'user'; // rôle par défaut si email non listé
 
 // Permissions par rôle
@@ -644,22 +650,25 @@ async function fetchGoogleProfile(){
     if(!r.ok){
       console.error('fetchGoogleProfile failed:', r.status);
       // Fallback : utiliser l'email stocké
-      const em=localStorage.getItem('inv_google_email')||'';
+      const em=(localStorage.getItem('inv_google_email')||'').toLowerCase();
       if(em){
-        googleProfile={name:em.split('@')[0],email:em,picture:''};
-        currentUser=googleProfile.name;
+        const mappedName=USER_NAMES[em]||em.split('@')[0];
+        googleProfile={name:mappedName,email:em,picture:''};
+        currentUser=mappedName;
         currentRole=getRole(em);
       }
       return;
     }
     const info=await r.json();
+    const email=(info.email||'').toLowerCase();
+    const mappedName=USER_NAMES[email]||info.name||info.given_name||email||'Utilisateur';
     googleProfile={
-      name:info.name||info.given_name||info.email||'Utilisateur',
-      email:info.email||'',
+      name:mappedName,
+      email:email,
       picture:info.picture||''
     };
-    currentRole=getRole(googleProfile.email);
-    currentUser=googleProfile.name;
+    currentRole=getRole(email);
+    currentUser=mappedName;
     try{
       localStorage.setItem('inv_google_email',googleProfile.email);
       localStorage.setItem('inv_role',currentRole);
@@ -677,10 +686,12 @@ async function fetchGoogleProfile(){
 function restoreProfile(){
   try{
     const p=JSON.parse(sessionStorage.getItem('gProfile')||'{}');
-    if(p.name){
-      googleProfile=p;
-      currentUser=p.name;
-      currentRole=getRole(p.email)||localStorage.getItem('inv_role')||DEFAULT_ROLE;
+    if(p.email){
+      const email=p.email.toLowerCase();
+      const mappedName=USER_NAMES[email]||p.name||email;
+      googleProfile={name:mappedName,email:email,picture:p.picture||''};
+      currentUser=mappedName;
+      currentRole=getRole(email)||localStorage.getItem('inv_role')||DEFAULT_ROLE;
       localStorage.setItem('inv_user',currentUser);
       return true;
     }
