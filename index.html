@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.4 -->
+<!-- VERSION 5.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -410,7 +410,7 @@ let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts =
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
 let drillState = { site: null, bat: null, etage: null };
-let currentView = 'home';
+let currentView = 'inventory';
 let progressFilter = 'all'; // all | inventoried | pending | found | notfound
 let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
 let googleProfile = { name: '', email: '', picture: '' };
@@ -898,31 +898,142 @@ function renderHome() {
 function renderMain() {
   const main = document.getElementById('main');
   if (!curLoc.bureau) {
+    // ── Pas de bureau sélectionné : afficher les inventaires en cours par bureau ──
     if (!DB.length) {
-      main.innerHTML = `<div class="empty"><i class="ti ti-building-warehouse"></i><div style="font-size:18px;font-weight:700;margin-bottom:10px">Inventaire Immobilisations</div><div style="font-size:14px;max-width:320px;margin:0 auto 24px;line-height:1.7;color:var(--text2)">Connectez Google Sheets ou chargez un fichier Excel, puis sélectionnez un emplacement pour commencer.</div><div style="display:flex;flex-direction:column;gap:10px;align-items:center"><button class="btn btn-primary" onclick="openGsPanel()" style="min-width:220px"><i class="ti ti-brand-google"></i> Connecter Google Sheets</button><button class="btn" onclick="document.getElementById('file-inp').click()" style="min-width:220px"><i class="ti ti-upload"></i> Charger Excel local</button></div></div>`;
+      main.innerHTML = `<div class="empty"><i class="ti ti-building-warehouse"></i>
+        <div style="font-size:18px;font-weight:700;margin-bottom:10px">Chargement des données…</div>
+        <div style="font-size:14px;color:var(--text2)">Connexion à Google Sheets en cours</div>
+      </div>`;
       return;
     }
-    if (currentView === 'progress') { renderDashboard(); } else { renderHome(); }
+    renderInventoryHome();
     return;
   }
-  const items = getItems();
-  const inv = items.filter(r => updates[r.cbi]);
-  const pct = items.length ? Math.round(inv.length / items.length * 100) : 0;
-  document.getElementById('loc-stats').style.display = 'block';
-  document.getElementById('loc-count').textContent = `${items.length} article(s)`;
-  document.getElementById('loc-pbar').style.width = pct + '%';
-  document.getElementById('loc-lbl').textContent = `${inv.length}/${items.length} inventoriés (${pct}%)`;
-  const enS = items.filter(r => (updates[r.cbi]?.serv || r.serv) === 'EN SERVICE').length;
-  const horS = items.length - enS;
-  main.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:700">${curLoc.bureau}</div><div style="font-size:13px;color:var(--text2);margin-top:3px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage}</div></div><button class="btn btn-primary btn-sm" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter article</button></div>
-    <div class="stats-row"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${items.length}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.length}</div></div><div class="stat-card"><div class="stat-lbl">En service</div><div class="stat-val">${enS}</div></div><div class="stat-card"><div class="stat-lbl">Hors service</div><div class="stat-val" style="color:var(--danger-txt)">${horS}</div></div></div>
-    <div class="scan-zone"><i class="ti ti-scan"></i><input type="text" id="scan-inp" placeholder="Scanner code barre article puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none"><span class="scan-hint">↵</span></div>
-    <div class="search-row"><input type="text" id="srch" placeholder="Rechercher…" oninput="debounceRenderTable()" style="margin:0"><select id="filt" onchange="renderTable()" style="margin:0"><option value="">Tous états</option>${ES.map(x => `<option value="${x}">${x}</option>`).join('')}<option value="__ni">Non inventorié</option></select></div>
-    <div id="twrap"></div>`;
+  // ── Bureau sélectionné : afficher la liste des articles ──
   renderTable();
-  setTimeout(() => document.getElementById('scan-inp')?.focus(), 100);
 }
-let _rtTimer;
+
+function renderInventoryHome() {
+  const main = document.getElementById('main');
+  const name = googleProfile.name || currentUser || '';
+  const tot = DB.length + newItems.filter(r => !r._newLoc).length;
+  const inv = Object.keys(updates).length;
+  const pct = tot ? Math.round(inv / tot * 100) : 0;
+
+  // Calculer les bureaux avec inventaire en cours ou récents
+  // Un bureau est "en cours" s'il a au moins 1 article inventorié mais pas 100%
+  const bureauStats = {};
+  for (const key in LOC_INDEX) {
+    const items = LOC_INDEX[key];
+    if (!items || !items.length) continue;
+    const [site, bat, etage, bureau] = key.split('|');
+    const invCount = items.filter(r => updates[r.cbi]).length;
+    if (invCount === 0) continue; // Pas commencé
+    bureauStats[key] = {
+      site, bat, etage, bureau,
+      total: items.length,
+      inv: invCount,
+      pct: Math.round(invCount / items.length * 100),
+      lastTs: Math.max(...items.filter(r => updates[r.cbi]).map(r => updates[r.cbi].ts || 0)),
+      isComplete: invCount === items.length
+    };
+  }
+
+  // Trier : en cours (non terminés) d'abord, par dernière activité décroissante
+  const sorted = Object.values(bureauStats).sort((a, b) => {
+    if (a.isComplete !== b.isComplete) return a.isComplete ? 1 : -1;
+    return b.lastTs - a.lastTs;
+  });
+  const enCours = sorted.filter(s => !s.isComplete);
+  const termines = sorted.filter(s => s.isComplete);
+
+  main.innerHTML = `<div style="padding:4px 0 20px;max-width:700px;margin:0 auto">
+    <!-- En-tête -->
+    <div style="margin-bottom:18px">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.02em">Inventaire en cours</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">Bonjour ${name.split(' ')[0]}, voici les bureaux en cours d'inventaire</div>
+    </div>
+
+    <!-- Progression globale compacte -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-sm)">
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--text2);font-weight:600;margin-bottom:4px">Progression globale</div>
+        <div class="pbar" style="height:8px;border-radius:4px"><div class="pbar-fill" style="width:${pct}%;border-radius:4px;background:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'}"></div></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">${inv.toLocaleString('fr-FR')} / ${tot.toLocaleString('fr-FR')} articles</div>
+      </div>
+      <div style="font-size:28px;font-weight:800;color:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
+    </div>
+
+    <!-- Sélection rapide d'emplacement -->
+    <div style="background:var(--accent-bg);border:1px solid var(--info-ring);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:18px">
+      <div style="font-size:13px;font-weight:700;color:var(--info-txt);margin-bottom:8px"><i class="ti ti-map-pin"></i> Démarrer / continuer un inventaire</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Sélectionnez un bureau via le menu ou scannez son code barre</div>
+      <button class="btn btn-primary btn-sm" onclick="toggleSidebar()" style="width:auto"><i class="ti ti-menu-2"></i> Choisir un emplacement</button>
+      <button class="btn btn-sm" onclick="openScanLibre()" style="margin-left:8px"><i class="ti ti-scan"></i> Scanner</button>
+    </div>
+
+    ${enCours.length ? `
+    <!-- Inventaires en cours -->
+    <div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn-txt);animation:pulse 1.5s infinite"></span>
+        <div style="font-size:14px;font-weight:700">En cours (${enCours.length})</div>
+      </div>
+      ${enCours.slice(0, 10).map(b => `
+        <div class="hier-row clickable" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="resumeInventory(this)" style="cursor:pointer;margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;margin-bottom:3px">${b.bureau}</div>
+              <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage}</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:4px">${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:16px;font-weight:800;color:var(--warn-txt)">${b.pct}%</div>
+              <div style="font-size:11px;color:var(--text3)">${b.inv}/${b.total}</div>
+            </div>
+            <i class="ti ti-arrow-right" style="font-size:18px;color:var(--text3);flex-shrink:0"></i>
+          </div>
+          <div class="pbar" style="margin-top:8px"><div class="pbar-fill" style="width:${b.pct}%;background:var(--warn-txt)"></div></div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${termines.length ? `
+    <!-- Inventaires terminés (collapsé) -->
+    <details style="margin-bottom:18px">
+      <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:12px;list-style:none;font-size:14px;font-weight:700">
+        <i class="ti ti-circle-check" style="color:var(--success-txt)"></i>
+        Terminés (${termines.length})
+        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text3)"></i>
+      </summary>
+      ${termines.slice(0, 20).map(b => `
+        <div class="hier-row clickable" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="resumeInventory(this)" style="cursor:pointer;margin-bottom:6px;background:var(--success-bg);border-color:var(--success-ring)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <i class="ti ti-circle-check" style="color:var(--success-txt);font-size:18px;flex-shrink:0"></i>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">${b.bureau}</div>
+              <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage} · ${b.total} articles</div>
+            </div>
+            <i class="ti ti-arrow-right" style="font-size:16px;color:var(--text3);flex-shrink:0"></i>
+          </div>
+        </div>
+      `).join('')}
+    </details>` : ''}
+
+    ${(!enCours.length && !termines.length) ? `
+    <div style="text-align:center;padding:40px 20px;background:var(--bg);border:1px dashed var(--border2);border-radius:var(--radius-lg)">
+      <i class="ti ti-clipboard-list" style="font-size:48px;color:var(--text3);display:block;margin-bottom:12px;opacity:.3"></i>
+      <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:4px">Aucun inventaire commencé</div>
+      <div style="font-size:13px;color:var(--text3)">Sélectionnez un bureau pour commencer</div>
+    </div>` : ''}
+  </div>`;
+}
+
+function resumeInventory(el) {
+  navigateTo(el.dataset.site, el.dataset.bat, el.dataset.etage, el.dataset.bureau);
+}
+
+
 function debounceRenderTable() { clearTimeout(_rtTimer); _rtTimer = setTimeout(renderTable, 200); }
 let _faTimer;
 function debounceFilterArticles() { clearTimeout(_faTimer); _faTimer = setTimeout(filterArticlesView, 200); }
@@ -1409,11 +1520,72 @@ function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi 
 function openEditItem(item) {
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+  // Construire les options de bureaux groupés par site/bat/etage
+  const allLocs = [];
+  for (const site in HIER) {
+    for (const bat in HIER[site]) {
+      for (const etage in HIER[site][bat]) {
+        for (const bureau of HIER[site][bat][etage]) {
+          allLocs.push({ site, bat, etage, bureau, label: `${site} › ${bat} › ${etage} › ${bureau}`, value: `${site}|${bat}|${etage}|${bureau}` });
+        }
+      }
+    }
+  }
+  const currentLocVal = `${item.site}|${item.bat}|${item.etage}|${item.bureau}`;
+  const locOptions = allLocs.map(l => `<option value="${l.value}"${l.value === currentLocVal ? ' selected' : ''}>${l.label}</option>`).join('');
+
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div>
+    <!-- Emplacement modifiable -->
+    <div class="form-group">
+      <label class="form-label"><i class="ti ti-map-pin"></i> Emplacement</label>
+      <select id="e-loc" data-original="${currentLocVal}">${locOptions}</select>
+      <div id="e-loc-info" style="font-size:11px;color:var(--text3);margin-top:-4px"></div>
+    </div>
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+  // Listener sur le changement d'emplacement
+  setTimeout(() => {
+    const locSel = document.getElementById('e-loc');
+    const locInfo = document.getElementById('e-loc-info');
+    if (locSel && locInfo) {
+      locSel.onchange = () => {
+        if (locSel.value !== locSel.dataset.original) {
+          locInfo.style.color = 'var(--warn-txt)';
+          locInfo.innerHTML = '<i class="ti ti-alert-triangle"></i> L’emplacement sera modifié à la validation';
+        } else {
+          locInfo.innerHTML = '';
+        }
+      };
+    }
+  }, 100);
 }
 async function saveUpd(cbi) {
+  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+  if (!item) return;
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
+
+  // Vérifier si l'emplacement a changé
+  const locSel = document.getElementById('e-loc');
+  if (locSel && locSel.value !== locSel.dataset.original) {
+    const [newSite, newBat, newEtage, newBureau] = locSel.value.split('|');
+    const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
+    // Retirer de l'ancien index
+    const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
+    if (LOC_INDEX[oldKey]) {
+      const idx = LOC_INDEX[oldKey].indexOf(item);
+      if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
+    }
+    // Mettre à jour l'article
+    item.site = newSite; item.bat = newBat; item.etage = newEtage; item.bureau = newBureau;
+    // Ajouter au nouvel index
+    const newKey = locSel.value;
+    if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
+    LOC_INDEX[newKey].push(item);
+    // Tracer dans l'observation
+    const transferNote = 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
+    u.obs = u.obs ? u.obs + ' | ' + transferNote : transferNote;
+  }
+
   updates[cbi] = u;
   invalidateStatsCache();
   saveLocal();
@@ -1666,7 +1838,7 @@ function init() {
         renderTopbarActions();
         renderDataStatus();
         await loadFromSheets();
-        goView('home');
+        goView('inventory');
         renderUserBadge();
       })();
       return;
@@ -1683,7 +1855,7 @@ function init() {
       renderUserBadge();
       renderTopbarActions();
       renderDataStatus();
-      goView('home');
+      goView('inventory');
       loadFromSheets();
       return;
     }
