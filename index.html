@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.2 -->
+<!-- VERSION 5.4 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -396,7 +396,7 @@ const ER = ['BON','MOYEN','VETUSTE'];
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
 const SH_DATA = 'Inventaire', SH_UPD = 'Updates', SH_NEW = 'NouveauxArticles', SH_LOC = 'NouveauxEmplacements', SH_SUIVI = 'SuiviInventaire', SH_EXPORT = 'ExportFinal';
 const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
-const H_UPD = ['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE'];
+const H_UPD = ['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE','SITE','BATIMENT','ETAGE','BUREAU'];
 const H_NEW = ['CBI','CBE','SITE','BAT','ETAGE','BUREAU','FAM','ART','QTY','SERV','RENOUV','OBS','MARQUE','MODELE','SERIE','BY','TS'];
 const H_LOC = ['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
 const H_SUIVI = ['SITE','STATUT','INVENTORISTE','DATE_DEBUT','DATE_MAJ','OBSERVATIONS'];
@@ -638,12 +638,29 @@ async function pullAll() {
 }
 async function pullUpdates() {
   try {
-    const d = await sGet(`${SH_UPD}!A2:H`);
+    const d = await sGet(`${SH_UPD}!A2:L`);
     for (const row of (d.values || [])) {
-      const [cbi, serv, renouv, obs, by, ts, photosCol, trouve] = row;
+      const [cbi, serv, renouv, obs, by, ts, photosCol, trouve, site, bat, etage, bureau] = row;
       if (!cbi) continue;
       const t = ts ? new Date(ts).getTime() : 0;
-      if (!updates[cbi] || t > updates[cbi].ts) updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', by: by || '', ts: t, trouve: trouve || '' };
+      if (!updates[cbi] || t > updates[cbi].ts) {
+        updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', by: by || '', ts: t, trouve: trouve || '' };
+        // Si un emplacement est indiqué, mettre à jour l'article
+        if (site && bureau) {
+          const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+          if (item && (item.site !== site || item.bat !== bat || item.etage !== etage || item.bureau !== bureau)) {
+            const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
+            if (LOC_INDEX[oldKey]) {
+              const idx = LOC_INDEX[oldKey].indexOf(item);
+              if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
+            }
+            item.site = site; item.bat = bat; item.etage = etage; item.bureau = bureau;
+            const newKey = site + '|' + bat + '|' + etage + '|' + bureau;
+            if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
+            if (!LOC_INDEX[newKey].includes(item)) LOC_INDEX[newKey].push(item);
+          }
+        }
+      }
     }
   } catch(e) {}
 }
@@ -684,8 +701,11 @@ async function pullSuivi() {
   } catch(e) {}
 }
 async function writeUpd(cbi, u) {
-  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, ...u } }); return; }
-  try { await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '']]); } catch(e) { pendingWrites.push({ type: 'u', d: { cbi, ...u } }); }
+  // Trouver l'emplacement actuel de l'article
+  const item = [...DB, ...newItems].find(r => r.cbi === cbi) || {};
+  const loc = { site: item.site || '', bat: item.bat || '', etage: item.etage || '', bureau: item.bureau || '' };
+  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); return; }
+  try { await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '', loc.site, loc.bat, loc.etage, loc.bureau]]); } catch(e) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); }
 }
 async function writeNI(item) {
   if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); return; }
@@ -700,7 +720,7 @@ async function pushPending() {
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
   const nl = pendingWrites.filter(p => p.type === 'nl');
-  if (upd.length) await sAppend(SH_UPD, upd.map(p => { const u = p.d; return [u.cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '']; }));
+  if (upd.length) await sAppend(SH_UPD, upd.map(p => { const u = p.d; return [u.cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '', u.site || '', u.bat || '', u.etage || '', u.bureau || '']; }));
   if (ni.length) await sAppend(SH_NEW, ni.map(p => { const r = p.d; return [r.cbi, r.cbe, r.site, r.bat, r.etage, r.bureau, r.fam, r.art, r.qty, r.serv, r.renouv, r.obs || '', r.marque || '', r.modele || '', r.serie || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
   if (nl.length) await sAppend(SH_LOC, nl.map(p => { const r = p.d; return [r.site, r.bat, r.etage, r.bureau, r.cbe || '', r.type || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
   pendingWrites = [];
@@ -1249,67 +1269,148 @@ function showLocFb(msg, type) {
   window.lfT = setTimeout(() => el.style.display = 'none', 3500);
 }
 
-// ---------- EDIT/ADD ITEMS ----------
-function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi === cbi); if (i) openEditItem(i); }
-function openEditItem(item) {
-  const u = updates[item.cbi] || {};
-  const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px"><i class="ti ti-transfer"></i> Emplacement actuel</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="flex:1;font-size:13px;background:var(--bg2);padding:8px 12px;border-radius:var(--radius);color:var(--text2)">${item.site} › ${item.bat} › ${item.etage} › ${item.bureau}</div>
-        ${curLoc.bureau && (curLoc.bureau !== item.bureau || curLoc.etage !== item.etage || curLoc.bat !== item.bat || curLoc.site !== item.site)
-          ? `<button class="btn btn-sm" style="background:var(--accent-bg);color:var(--accent);border-color:var(--info-ring);white-space:nowrap" onclick="transferArticle('${item.cbi}')"><i class="ti ti-transfer"></i> Transférer ici</button>`
-          : ''}
-      </div>
-      ${curLoc.bureau && (curLoc.bureau !== item.bureau || curLoc.etage !== item.etage || curLoc.bat !== item.bat || curLoc.site !== item.site)
-        ? `<div style="font-size:11px;color:var(--info-txt);background:var(--info-bg);padding:6px 10px;border-radius:var(--radius)"><i class="ti ti-info-circle"></i> Transférer cet article vers : <strong>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</strong></div>`
-        : `<div style="font-size:11px;color:var(--text3)">L'article est déjà dans l'emplacement d'inventaire actuel</div>`}
-    </div>
-    <div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
-}
-async function transferArticle(cbi) {
-  if (!curLoc.bureau) { showToast('Sélectionnez un emplacement d\'inventaire d\'abord', 'warn'); return; }
-  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
-  if (!item) return;
+
+// ---------- SCAN ARTICLE (dans vue inventaire) ----------
+function onScanKey(e) {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  e.target.value = '';
+  if (!v) return;
   
+  // Chercher dans toute la base
+  const item = [...DB, ...newItems].find(r => (r.cbi === v || r.cbe === v) && !r._newLoc);
+  
+  if (!item) {
+    showToast(`Code "${v}" introuvable dans la base`, 'warn');
+    return;
+  }
+  
+  // L'article est-il dans le bureau actuel ?
+  const isHere = item.site === curLoc.site && item.bat === curLoc.bat && item.etage === curLoc.etage && item.bureau === curLoc.bureau;
+  
+  if (isHere) {
+    // Article dans le bon bureau → ouvrir la fiche de mise à jour
+    openEditItem(item);
+  } else {
+    // Article trouvé MAIS dans un autre emplacement → proposer le transfert
+    openTransferModal(item);
+  }
+}
+
+function openTransferModal(item) {
+  const u = updates[item.cbi] || {};
+  const sv = u.serv || item.serv || 'EN SERVICE';
+  const rv = u.renouv || item.renouv || 'BON';
+  const obs = u.obs !== undefined ? u.obs : (item.obs || '');
   const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
   const newLoc = curLoc.site + ' › ' + curLoc.bat + ' › ' + curLoc.etage + ' › ' + curLoc.bureau;
   
-  if (!confirm('Transférer cet article ?\n\nDe : ' + oldLoc + '\nVers : ' + newLoc)) return;
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head"><h2><i class="ti ti-transfer" style="color:var(--accent)"></i> Article trouvé ailleurs</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="alert alert-info"><i class="ti ti-info-circle"></i>Cet article est enregistré dans un autre emplacement. Souhaitez-vous le transférer ici et mettre à jour son état ?</div>
+      
+      <div class="item-box">
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px">${item.fam}</div>
+        <div>${[
+          '<span class="tag"><i class="ti ti-barcode"></i> ' + item.cbi + '</span>',
+          item.marque ? '<span class="tag">' + item.marque + '</span>' : '',
+          item.modele ? '<span class="tag">' + item.modele + '</span>' : '',
+          item.serie ? '<span class="tag">SN: ' + item.serie + '</span>' : ''
+        ].filter(Boolean).join('')}</div>
+      </div>
+      
+      <!-- Visualisation du transfert -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:10px 12px">
+          <div style="font-size:11px;color:var(--danger-txt);font-weight:700;margin-bottom:4px"><i class="ti ti-map-pin"></i> ANCIEN EMPLACEMENT</div>
+          <div style="font-size:12px;color:var(--text)">${oldLoc}</div>
+        </div>
+        <i class="ti ti-arrow-right" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
+        <div style="flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:10px 12px">
+          <div style="font-size:11px;color:var(--success-txt);font-weight:700;margin-bottom:4px"><i class="ti ti-map-pin"></i> NOUVEAU EMPLACEMENT</div>
+          <div style="font-size:12px;color:var(--text)">${newLoc}</div>
+        </div>
+      </div>
+      
+      <!-- Formulaire de mise à jour (comme openEditItem) -->
+      <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
+      <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${obs}</textarea></div>
+      <div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
+      
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn" onclick="closeModal();openEditItem_cbi('${item.cbi}')"><i class="ti ti-edit"></i> Modifier sans transférer</button>
+        <button class="btn btn-primary" onclick="confirmTransferAndUpdate('${item.cbi}')"><i class="ti ti-transfer"></i> Transférer et valider</button>
+      </div>
+    </div>`);
+}
+
+async function confirmTransferAndUpdate(cbi) {
+  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+  if (!item || !curLoc.bureau) return;
   
-  // Mettre à jour l'emplacement de l'article
+  const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
+  
+  // 1. Récupérer les valeurs du formulaire
+  const trouveEl = document.querySelector('input[name="t-trouve"]:checked');
+  const u = {
+    serv: document.getElementById('t-sv').value,
+    renouv: document.getElementById('t-rv').value,
+    obs: document.getElementById('t-obs').value,
+    trouve: trouveEl ? trouveEl.value : 'OUI',
+    by: currentUser,
+    ts: Date.now()
+  };
+  
+  // Ajouter la mention du transfert dans l'observation
+  const transferNote = 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
+  u.obs = u.obs ? u.obs + ' | ' + transferNote : transferNote;
+  
+  // 2. Retirer l'article de l'ancien index
+  const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
+  if (LOC_INDEX[oldKey]) {
+    const idx = LOC_INDEX[oldKey].indexOf(item);
+    if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
+  }
+  
+  // 3. Déplacer l'article vers le nouveau bureau
   item.site = curLoc.site;
   item.bat = curLoc.bat;
   item.etage = curLoc.etage;
   item.bureau = curLoc.bureau;
   
-  // Enregistrer le transfert dans les updates
-  const u = updates[cbi] || { serv: item.serv, renouv: item.renouv, obs: '', trouve: '', by: currentUser, ts: Date.now() };
-  u.obs = (u.obs ? u.obs + ' | ' : '') + 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
-  u.by = currentUser;
-  u.ts = Date.now();
+  // 4. Ajouter au nouvel index
+  const newKey = curLoc.site + '|' + curLoc.bat + '|' + curLoc.etage + '|' + curLoc.bureau;
+  if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
+  LOC_INDEX[newKey].push(item);
+  
+  // 5. Mettre à jour l'état
   updates[cbi] = u;
   
-  // Écrire le transfert dans Google Sheets
+  // 6. Écrire dans Google Sheets
   if (gTok) {
     try {
-      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs, u.by, new Date(u.ts).toISOString(), '', u.trouve || '']]);
-      // Mettre à jour le nouvel emplacement dans NewItems si c'est un article existant
-      await sAppend(SH_NEW, [[cbi, item.cbe, curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau, item.fam, item.art, item.qty, item.serv, item.renouv, 'TRANSFERT: ' + oldLoc, item.marque || '', item.modele || '', item.serie || '', currentUser, new Date().toISOString()]]);
-    } catch(e) {}
+      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs, u.by, new Date(u.ts).toISOString(), '', u.trouve, curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau]]);
+    } catch(e) { console.error('Transfer write error', e); }
   }
   
-  // Rebuilder l'index après transfert
-  buildHier();
   invalidateStatsCache();
   saveLocal();
   closeModal();
   renderMain();
   renderDataStatus();
-  showToast('Article transféré vers ' + curLoc.bureau, 'success');
+  showToast('✓ Article transféré et inventorié', 'success');
 }
 
+// ---------- EDIT/ADD ITEMS ----------
+function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi === cbi); if (i) openEditItem(i); }
+function openEditItem(item) {
+  const u = updates[item.cbi] || {};
+  const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+}
 async function saveUpd(cbi) {
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
@@ -1371,7 +1472,22 @@ async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) 
 async function ensureDriveFolder() { if (driveFolderId) return driveFolderId; const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`); const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers: { Authorization: `Bearer ${gTok}` } }); if (!r.ok) throw new Error('Drive API inaccessible'); const data = await r.json(); if (data.files && data.files.length) { driveFolderId = data.files[0].id; return driveFolderId; } const cr = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }) }); if (!cr.ok) throw new Error('Impossible de créer le dossier'); const fd = await cr.json(); driveFolderId = fd.id; await fetch(`https://www.googleapis.com/drive/v3/files/${driveFolderId}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return driveFolderId; }
 async function uploadPhotoToDrive(file, cbi, photoIndex) { const folderId = await ensureDriveFolder(); const ext = file.name.split('.').pop() || 'jpg'; const fname = `${cbi}_${photoIndex}_${Date.now()}.${ext}`; const compressed = await compressImage(file, 1200, 0.82); const boundary = 'inv_boundary_' + Date.now(); const meta = JSON.stringify({ name: fname, parents: [folderId] }); const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${compressed.type}\r\n\r\n`; const bodyEnd = `\r\n--${boundary}--`; const blob = new Blob([body, compressed, bodyEnd]); const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: blob }); if (!r.ok) throw new Error('Erreur upload photo'); const fd = await r.json(); await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return { id: fd.id, viewUrl: `https://drive.google.com/file/d/${fd.id}/view`, thumbUrl: `https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`, name: fname }; }
 function compressImage(file, maxW, quality) { return new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { URL.revokeObjectURL(url); const canvas = document.createElement('canvas'); let w = img.width, h = img.height; if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; } canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h); canvas.toBlob(b => res(b), 'image/jpeg', quality); }; img.onerror = rej; img.src = url; }); }
-async function updatePhotosInSheet(cbi) { if (!gTok || !gsConf.sheetId) return; const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n'); try { const d = await sGet(`${SH_UPD}!A2:G`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === cbi); if (idx >= 0) { await sPut(`${SH_UPD}!G${idx + 2}`, [[links]]); } else { const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() }; await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), links, u.trouve || '']]); } } catch(e) { console.error('Photo sheet update error', e); } }
+async function updatePhotosInSheet(cbi) {
+  if (!gTok || !gsConf.sheetId) return;
+  const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n');
+  const item = [...DB, ...newItems].find(r => r.cbi === cbi) || {};
+  try {
+    const d = await sGet(`${SH_UPD}!A2:G`);
+    const rows = d.values || [];
+    const idx = rows.findIndex(r => r[0] === cbi);
+    if (idx >= 0) {
+      await sPut(`${SH_UPD}!G${idx + 2}`, [[links]]);
+    } else {
+      const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() };
+      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), links, u.trouve || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '']]);
+    }
+  } catch(e) { console.error('Photo sheet update error', e); }
+}
 
 // ---------- EXPORT, RESET, SUIVI, SCAN LIBRE ----------
 function openExport() { const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
