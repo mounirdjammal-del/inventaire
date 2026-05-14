@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.1 -->
+<!-- VERSION 5.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -405,6 +405,7 @@ const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
 
 let driveFolderId = null;
 let DB = [], HIER = {}, FAMS = {};
+let LOC_INDEX = {}; // cache: 'site|bat|etage|bureau' -> [items]
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
@@ -744,6 +745,7 @@ async function syncNow() {
     await pushPending();
     await pullAll();
     lastSync = Date.now();
+    invalidateStatsCache();
     renderMain();
     renderDataStatus();
     updateBadge('ok');
@@ -754,27 +756,64 @@ function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = 
 
 // ---------- HIERARCHY ----------
 function buildHier() {
-  HIER = {}; FAMS = {};
-  for (const r of [...DB, ...newItems]) {
+  HIER = {}; FAMS = {}; LOC_INDEX = {};
+  const all = [...DB, ...newItems];
+  for (let i = 0; i < all.length; i++) {
+    const r = all[i];
     if (!r.site) continue;
     if (!HIER[r.site]) HIER[r.site] = {};
     if (!HIER[r.site][r.bat]) HIER[r.site][r.bat] = {};
     if (!HIER[r.site][r.bat][r.etage]) HIER[r.site][r.bat][r.etage] = new Set();
     HIER[r.site][r.bat][r.etage].add(r.bureau);
     if (r.fam && r.art) { if (!FAMS[r.fam]) FAMS[r.fam] = new Set(); FAMS[r.fam].add(r.art); }
+    // Indexer par emplacement
+    if (!r._newLoc) {
+      const key = r.site + '|' + r.bat + '|' + r.etage + '|' + r.bureau;
+      if (!LOC_INDEX[key]) LOC_INDEX[key] = [];
+      LOC_INDEX[key].push(r);
+    }
   }
   for (const s in HIER) for (const b in HIER[s]) for (const e in HIER[s][b]) HIER[s][b][e] = [...HIER[s][b][e]].sort();
   for (const f in FAMS) FAMS[f] = [...FAMS[f]].sort();
+  // Pré-calculer les stats par site/bat/etage
+  _statsCache = {};
   const ss = document.getElementById('sel-site');
   if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
 }
+let _statsCache = {};
+function getStatsFor(site, bat, etage, bureau) {
+  const key = (site||'') + '|' + (bat||'') + '|' + (etage||'') + '|' + (bureau||'');
+  if (_statsCache[key]) return _statsCache[key];
+  const items = getItemsAt(site, bat, etage, bureau);
+  const inv = items.filter(r => updates[r.cbi]).length;
+  const trouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
+  const nonTrouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
+  const horsSrv = items.filter(r => (updates[r.cbi]?.serv || r.serv) !== 'EN SERVICE').length;
+  const result = { total: items.length, inv, trouve, nonTrouve, horsSrv, pct: items.length ? Math.round(inv / items.length * 100) : 0 };
+  _statsCache[key] = result;
+  return result;
+}
+function invalidateStatsCache() { _statsCache = {}; }
 function getItemsAt(site, bat, etage, bureau) {
-  return [...DB, ...newItems].filter(r => !r._newLoc && (!site || r.site === site) && (!bat || r.bat === bat) && (!etage || r.etage === etage) && (!bureau || r.bureau === bureau));
+  // Si on a les 4 niveaux, utiliser l'index direct
+  if (site && bat && etage && bureau) {
+    return LOC_INDEX[site + '|' + bat + '|' + etage + '|' + bureau] || [];
+  }
+  // Sinon, agréger les clés correspondantes
+  const results = [];
+  const prefix = (site||'') + '|' + (bat||'') + '|' + (etage||'') + '|' + (bureau||'');
+  for (const key in LOC_INDEX) {
+    const parts = key.split('|');
+    if ((!site || parts[0] === site) && (!bat || parts[1] === bat) && (!etage || parts[2] === etage) && (!bureau || parts[3] === bureau)) {
+      for (let i = 0; i < LOC_INDEX[key].length; i++) results.push(LOC_INDEX[key][i]);
+    }
+  }
+  return results;
 }
 function getItems() {
   const { site, bat, etage, bureau } = curLoc;
   if (!bureau) return [];
-  return [...DB, ...newItems].filter(r => r.site === site && r.bat === bat && r.etage === etage && r.bureau === bureau && !r._newLoc);
+  return LOC_INDEX[site + '|' + bat + '|' + etage + '|' + bureau] || [];
 }
 
 // ---------- NAVIGATION & UI ----------
@@ -858,11 +897,16 @@ function renderMain() {
   main.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:700">${curLoc.bureau}</div><div style="font-size:13px;color:var(--text2);margin-top:3px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage}</div></div><button class="btn btn-primary btn-sm" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter article</button></div>
     <div class="stats-row"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${items.length}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.length}</div></div><div class="stat-card"><div class="stat-lbl">En service</div><div class="stat-val">${enS}</div></div><div class="stat-card"><div class="stat-lbl">Hors service</div><div class="stat-val" style="color:var(--danger-txt)">${horS}</div></div></div>
     <div class="scan-zone"><i class="ti ti-scan"></i><input type="text" id="scan-inp" placeholder="Scanner code barre article puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none"><span class="scan-hint">↵</span></div>
-    <div class="search-row"><input type="text" id="srch" placeholder="Rechercher…" oninput="renderTable()" style="margin:0"><select id="filt" onchange="renderTable()" style="margin:0"><option value="">Tous états</option>${ES.map(x => `<option value="${x}">${x}</option>`).join('')}<option value="__ni">Non inventorié</option></select></div>
+    <div class="search-row"><input type="text" id="srch" placeholder="Rechercher…" oninput="debounceRenderTable()" style="margin:0"><select id="filt" onchange="renderTable()" style="margin:0"><option value="">Tous états</option>${ES.map(x => `<option value="${x}">${x}</option>`).join('')}<option value="__ni">Non inventorié</option></select></div>
     <div id="twrap"></div>`;
   renderTable();
   setTimeout(() => document.getElementById('scan-inp')?.focus(), 100);
 }
+let _rtTimer;
+function debounceRenderTable() { clearTimeout(_rtTimer); _rtTimer = setTimeout(renderTable, 200); }
+let _faTimer;
+function debounceFilterArticles() { clearTimeout(_faTimer); _faTimer = setTimeout(filterArticlesView, 200); }
+
 function renderTable() {
   const items = getItems();
   const srch = (document.getElementById('srch')?.value || '').toLowerCase();
@@ -895,35 +939,88 @@ function renderLocationsView() {
   const sites = Object.keys(HIER).sort();
   if (!sites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
   let html = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Emplacements</div><button class="btn btn-sm btn-primary" onclick="openAddLocation()"><i class="ti ti-plus"></i> Ajouter</button></div>`;
+  // Rendu niveau 1 : sites seulement (pas de contenu enfant)
   sites.forEach(site => {
-    const bats = Object.keys(HIER[site] || {}).sort();
-    const siteItems = getItemsAt(site, null, null, null);
-    const siteInv = siteItems.filter(r => updates[r.cbi]).length;
-    const sitePct = siteItems.length ? Math.round(siteInv / siteItems.length * 100) : 0;
+    const stats = getStatsFor(site, null, null, null);
     const st = siteStatuts[site] || { statut: 'NON OUVERT' };
     const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-    html += `<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden"><div style="padding:14px;display:flex;align-items:center;gap:10px;cursor:pointer" data-open="0" onclick="toggleLocCard(this)"><i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i><div style="flex:1"><div style="font-size:15px;font-weight:700">${site}</div><div style="font-size:12px;color:var(--text2)">${bats.length} bâtiment(s) · ${siteItems.length} articles</div></div><span style="font-size:12px;font-weight:600;color:${stColor}">${st.statut}</span><span style="font-size:14px;font-weight:700;margin-left:8px">${sitePct}%</span><i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3)"></i></div><div style="display:none;border-top:0.5px solid var(--border)">`;
-    bats.forEach(bat => {
-      const etages = Object.keys((HIER[site] || {})[bat] || {}).sort();
-      html += `<div style="padding:10px 14px 10px 36px;border-bottom:0.5px solid var(--border)"><div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}</div>`;
-      etages.forEach(etage => {
-        const bureaux = ((HIER[site] || {})[bat] || {})[etage] || [];
-        html += `<div style="margin-left:16px;margin-bottom:6px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">${etage}</div>`;
-        bureaux.forEach(bureau => {
-          const items = getItemsAt(site, bat, etage, bureau);
-          const invC = items.filter(r => updates[r.cbi]).length;
-          const pct = items.length ? Math.round(invC / items.length * 100) : 0;
-          const pctColor = pct === 100 ? 'var(--success-txt)' : pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
-          html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)"><div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)"><i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i><div style="flex:1;font-size:13px">${bureau}</div><span style="font-size:12px;font-weight:600;color:${pctColor}">${pct}%</span><span style="font-size:11px;color:var(--text3)">${invC}/${items.length}</span><i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i></div><button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button></div>`;
-        });
-        html += `</div>`;
+    const batsCount = Object.keys(HIER[site] || {}).length;
+    html += `<div class="loc-site-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden">
+      <div style="padding:14px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleLocSite(this,'${site}')">
+        <i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i>
+        <div style="flex:1"><div style="font-size:15px;font-weight:700">${site}</div>
+        <div style="font-size:12px;color:var(--text2)">${batsCount} bâtiment(s) · ${stats.total} articles</div></div>
+        <span style="font-size:12px;font-weight:600;color:${stColor}">${st.statut}</span>
+        <span style="font-size:14px;font-weight:700;margin-left:8px">${stats.pct}%</span>
+        <i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3);transition:transform .2s"></i>
+      </div>
+      <div class="loc-site-content" style="display:none;border-top:1px solid var(--border)"></div>
+    </div>`;
+  });
+  main.innerHTML = html;
+}
+function toggleLocSite(el, site) {
+  const content = el.nextElementSibling;
+  const chevron = el.querySelector('.ti-chevron-down');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    // Lazy render: rendre le contenu seulement à l'ouverture
+    if (!content.dataset.loaded) {
+      content.dataset.loaded = '1';
+      renderLocSiteContent(content, site);
+    }
+  } else {
+    content.style.display = 'none';
+    if (chevron) chevron.style.transform = '';
+  }
+}
+function renderLocSiteContent(container, site) {
+  const bats = Object.keys(HIER[site] || {}).sort();
+  let html = '';
+  bats.forEach(bat => {
+    const etages = Object.keys((HIER[site] || {})[bat] || {}).sort();
+    html += `<div style="padding:10px 14px 10px 36px;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;cursor:pointer" onclick="toggleLocBat(this)">
+        <i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}
+        <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s"></i>
+      </div>
+      <div class="loc-bat-content" style="display:none">`;
+    etages.forEach(etage => {
+      const bureaux = ((HIER[site] || {})[bat] || {})[etage] || [];
+      html += `<div style="margin-left:16px;margin-bottom:6px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px;font-weight:600">${etage}</div>`;
+      bureaux.forEach(bureau => {
+        const stats = getStatsFor(site, bat, etage, bureau);
+        const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)">
+          <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)">
+            <i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i>
+            <div style="flex:1;font-size:13px">${bureau}</div>
+            <span style="font-size:12px;font-weight:600;color:${pctColor}">${stats.pct}%</span>
+            <span style="font-size:11px;color:var(--text3)">${stats.inv}/${stats.total}</span>
+            <i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i>
+          </div>
+          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
+        </div>`;
       });
       html += `</div>`;
     });
     html += `</div></div>`;
   });
-  main.innerHTML = html;
+  container.innerHTML = html;
 }
+function toggleLocBat(el) {
+  const content = el.nextElementSibling;
+  const chevron = el.querySelector('.ti-chevron-down');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  } else {
+    content.style.display = 'none';
+    if (chevron) chevron.style.transform = '';
+  }
+}
+
 function toggleLocCard(el) {
   const div = el.nextElementSibling;
   if (div) div.style.display = div.style.display === 'none' ? '' : 'none';
@@ -935,13 +1032,17 @@ function goToInventory(el) {
 
 // ---------- ARTICLES VIEW ----------
 function renderArticlesView() {
+  _artLimit = 50;
   const main = document.getElementById('main');
   const all = [...DB, ...newItems].filter(r => !r._newLoc);
   main.innerHTML = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Articles (${all.length.toLocaleString('fr-FR')})</div><button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button></div>
-    <div class="search-row" style="margin-bottom:14px"><input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="filterArticlesView()" style="margin:0;flex:1"><select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px"><option value="">Tous</option><option value="__inv">Inventoriés</option><option value="__non">Non inventoriés</option><option value="OUI">Trouvés</option><option value="NON">Non trouvés</option></select></div>
+    <div class="search-row" style="margin-bottom:14px"><input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="debounceFilterArticles()" style="margin:0;flex:1"><select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px"><option value="">Tous</option><option value="__inv">Inventoriés</option><option value="__non">Non inventoriés</option><option value="OUI">Trouvés</option><option value="NON">Non trouvés</option></select></div>
     <div id="art-list"></div>`;
   filterArticlesView();
 }
+let _artLimit = 50;
+function showMoreArticles() { _artLimit += 50; filterArticlesView(); }
+
 function filterArticlesView() {
   const all = [...DB, ...newItems].filter(r => !r._newLoc);
   const srch = (document.getElementById('art-srch')?.value || '').toLowerCase();
@@ -954,7 +1055,7 @@ function filterArticlesView() {
     return true;
   });
   const total = filtered.length;
-  filtered = filtered.slice(0, 100);
+  filtered = filtered.slice(0, _artLimit);
   const el = document.getElementById('art-list');
   if (!el) return;
   if (!filtered.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article</div>'; return; }
@@ -964,7 +1065,7 @@ function filterArticlesView() {
     const ok = !!updates[r.cbi];
     const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
     return `<div class="t-row${ok ? ' inventoried' : ''}" data-cbi="${r.cbi}" onclick="openEditItem_cbi(this.dataset.cbi)"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div><div style="font-size:11px;color:var(--text3)">${r.fam} · ${r.bureau}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center">${ok ? '<i class="ti ti-check" style="color:var(--success-txt)"></i>' : ''}</div></div>`;
-  }).join('')}</div>${total > 100 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text2)">${total} résultats — affichage limité à 100. Affinez la recherche.</div>` : ''}`;
+  }).join('')}</div>${total > 50 ? `<div style="text-align:center;padding:12px"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">${total} résultats — ${filtered.length} affichés</div><button class="btn btn-sm" onclick="showMoreArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : ''}`;
 }
 
 // ---------- DASHBOARD PROGRESS ----------
@@ -1002,10 +1103,11 @@ function renderHierView() {
   let html = '';
   if (!site) {
     html = Object.keys(HIER).sort().map(s => {
+      const stats = getStatsFor(s, null, null, null);
       const items = getItemsAt(s, null, null, null);
       const st = siteStatuts[s] || { statut: 'NON OUVERT' };
       const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-      return makeProgressRow(s, items, `drillTo('${s}',null,null)`, `<span style="color:${stColor};font-weight:600">${st.statut}</span>`, false);
+      return makeProgressRow(s, items, `drillTo('${s}',null,null)`, `<span style="color:${stColor};font-weight:600">${st.statut}</span> · ${stats.total} articles`, false);
     }).join('');
   } else if (!bat) {
     html = Object.keys(HIER[site] || {}).sort().map(b => {
@@ -1198,6 +1300,9 @@ async function transferArticle(cbi) {
     } catch(e) {}
   }
   
+  // Rebuilder l'index après transfert
+  buildHier();
+  invalidateStatsCache();
   saveLocal();
   closeModal();
   renderMain();
@@ -1209,6 +1314,7 @@ async function saveUpd(cbi) {
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
   updates[cbi] = u;
+  invalidateStatsCache();
   saveLocal();
   closeModal();
   renderMain();
@@ -1235,6 +1341,11 @@ async function saveNew() {
   const item = { ...curLoc, cbi, cbe, fam: document.getElementById('n-fam').value, art: document.getElementById('n-art').value, marque: document.getElementById('n-marque').value, modele: document.getElementById('n-modele').value, serie: document.getElementById('n-serie').value, qty: parseInt(document.getElementById('n-qty').value) || 1, serv: document.getElementById('n-sv').value, renouv: document.getElementById('n-rv').value, obs: document.getElementById('n-obs').value, prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: currentUser, _addedAt: Date.now() };
   newItems.push(item);
   updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
+  // Mettre à jour l'index
+  const locKey = item.site+'|'+item.bat+'|'+item.etage+'|'+item.bureau;
+  if(!LOC_INDEX[locKey]) LOC_INDEX[locKey]=[];
+  LOC_INDEX[locKey].push(item);
+  invalidateStatsCache();
   saveLocal();
   closeModal();
   renderMain();
