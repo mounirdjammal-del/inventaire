@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.0 -->
+<!-- VERSION 5.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -410,6 +410,7 @@ let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
 let drillState = { site: null, bat: null, etage: null };
 let currentView = 'home';
+let progressFilter = 'all'; // all | inventoried | pending | found | notfound
 let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
 let googleProfile = { name: '', email: '', picture: '' };
 let pendingWrites = [];
@@ -913,7 +914,7 @@ function renderLocationsView() {
           const invC = items.filter(r => updates[r.cbi]).length;
           const pct = items.length ? Math.round(invC / items.length * 100) : 0;
           const pctColor = pct === 100 ? 'var(--success-txt)' : pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
-          html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;border-bottom:0.5px solid var(--border)" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)"><i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i><div style="flex:1;font-size:13px">${bureau}</div><span style="font-size:12px;font-weight:600;color:${pctColor}">${pct}%</span><span style="font-size:11px;color:var(--text3)">${invC}/${items.length}</span><i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i></div>`;
+          html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)"><div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)"><i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i><div style="flex:1;font-size:13px">${bureau}</div><span style="font-size:12px;font-weight:600;color:${pctColor}">${pct}%</span><span style="font-size:11px;color:var(--text3)">${invC}/${items.length}</span><i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i></div><button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button></div>`;
         });
         html += `</div>`;
       });
@@ -982,6 +983,14 @@ function renderDashboard() {
     <div class="stats-row" style="margin-bottom:14px"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Restant</div><div class="stat-val" style="color:var(--text2)">${(tot - inv).toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Global</div><div class="stat-val">${pct}%</div></div></div>
     <div class="pbar" style="height:10px;border-radius:5px;margin-bottom:18px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div>
     <div style="font-size:13px;margin-bottom:12px;padding:8px 12px;background:var(--bg2);border-radius:var(--radius);display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-map-pin" style="font-size:14px;color:var(--text3)"></i>${breadcrumb}</div>
+    <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:12px;color:var(--text3);font-weight:600">Filtrer :</span>
+      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='all'?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="setProgressFilter('all')">Tous</button>
+      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='inventoried'?'background:var(--success-txt);color:#fff;border-color:var(--success-txt)':''}" onclick="setProgressFilter('inventoried')">✓ Inventoriés</button>
+      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='pending'?'background:var(--warn-txt);color:#fff;border-color:var(--warn-txt)':''}" onclick="setProgressFilter('pending')">⏳ En attente</button>
+      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='found'?'background:var(--success-txt);color:#fff;border-color:var(--success-txt)':''}" onclick="setProgressFilter('found')">✓ Trouvés</button>
+      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='notfound'?'background:var(--danger-txt);color:#fff;border-color:var(--danger-txt)':''}" onclick="setProgressFilter('notfound')">✗ Non trouvés</button>
+    </div>
     <div id="hier-view"></div>
     ${!drillState.site ? renderByUser() : ''}`;
   renderHierView();
@@ -1022,11 +1031,13 @@ function makeProgressRow(label, items, onclick, sublabel, isLeaf) {
   if (!items.length) return '';
   const inv = items.filter(r => updates[r.cbi]).length;
   const pct = Math.round(inv / items.length * 100);
+  const filteredCount = getFilteredCount(items);
+  const filterLabel = progressFilter !== 'all' ? ` · <span style="color:var(--accent);font-weight:600">${filteredCount} filtrés</span>` : '';
   const trouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
   const nonTrouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
   const horsSrv = items.filter(r => (updates[r.cbi]?.serv || r.serv) !== 'EN SERVICE').length;
   const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--info-txt)';
-  return `<div class="hier-row${!isLeaf ? ' clickable' : ''}" ${!isLeaf ? `onclick="${onclick}"` : ''}><div class="hier-row-top"><div class="hier-row-label">${!isLeaf ? '<i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>' : '<i class="ti ti-door" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>'}<div><div style="font-size:14px;font-weight:600">${label}</div>${sublabel ? `<div style="font-size:11px;color:var(--text3)">${sublabel}</div>` : ''}</div></div><div class="hier-row-stats"><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:${barColor}">${pct}%</div><div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div></div>${isLeaf ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:80px">${trouve ? `<span style="font-size:11px;color:var(--success-txt)">✓ Trouvés: ${trouve}</span>` : ''}${nonTrouve ? `<span style="font-size:11px;color:var(--danger-txt)">✗ Non trouvés: ${nonTrouve}</span>` : ''}${horsSrv ? `<span style="font-size:11px;color:var(--warn-txt)">⚠ Hors service: ${horsSrv}</span>` : ''}</div>` : ''}</div></div><div style="margin-top:8px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div></div>${isLeaf && items.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${items.slice(0, 8).map(r => { const ok = !!updates[r.cbi]; const sv = updates[r.cbi]?.serv || r.serv; const dot = ok ? (sv === 'EN SERVICE' ? 'var(--success-txt)' : 'var(--warn-txt)') : 'var(--border2)'; return `<div title="${r.art}" style="width:10px;height:10px;border-radius:50%;background:${dot};flex-shrink:0"></div>`; }).join('')}${items.length > 8 ? `<span style="font-size:10px;color:var(--text3)">+${items.length - 8}</span>` : ''}</div>` : ''}</div>`;
+  return `<div class="hier-row${!isLeaf ? ' clickable' : ''}" ${!isLeaf ? `onclick="${onclick}"` : ''}><div class="hier-row-top"><div class="hier-row-label">${!isLeaf ? '<i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>' : '<i class="ti ti-door" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>'}<div><div style="font-size:14px;font-weight:600">${label}</div>${sublabel ? `<div style="font-size:11px;color:var(--text3)">${sublabel}${filterLabel}</div>` : ''}</div></div><div class="hier-row-stats"><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:${barColor}">${pct}%</div><div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div></div>${isLeaf ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:80px">${trouve ? `<span style="font-size:11px;color:var(--success-txt)">✓ Trouvés: ${trouve}</span>` : ''}${nonTrouve ? `<span style="font-size:11px;color:var(--danger-txt)">✗ Non trouvés: ${nonTrouve}</span>` : ''}${horsSrv ? `<span style="font-size:11px;color:var(--warn-txt)">⚠ Hors service: ${horsSrv}</span>` : ''}</div>` : ''}</div></div><div style="margin-top:8px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div></div>${isLeaf && items.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${items.filter(r => { if(progressFilter==='all') return true; if(progressFilter==='inventoried') return !!updates[r.cbi]; if(progressFilter==='pending') return !updates[r.cbi]; if(progressFilter==='found') return (updates[r.cbi]?.trouve||'')==='OUI'; if(progressFilter==='notfound') return (updates[r.cbi]?.trouve||'')==='NON'; return true; }).slice(0, 10).map(r => { const ok = !!updates[r.cbi]; const sv = updates[r.cbi]?.serv || r.serv; const dot = ok ? (sv === 'EN SERVICE' ? 'var(--success-txt)' : 'var(--warn-txt)') : 'var(--border2)'; return `<div title="${r.art}" style="width:10px;height:10px;border-radius:50%;background:${dot};flex-shrink:0"></div>`; }).join('')}${filteredCount > 10 ? `<span style="font-size:10px;color:var(--text3)">+${filteredCount - 10}</span>` : ''}</div>` : ''}</div>`;
 }
 function renderByUser() {
   const byU = {};
@@ -1035,6 +1046,17 @@ function renderByUser() {
   const mx = Math.max(...Object.values(byU), 1);
   return `<div style="margin-top:16px"><div style="font-size:14px;font-weight:700;margin-bottom:10px">Par inventoriste</div><div class="dash-card">${Object.entries(byU).sort((a, b) => b[1] - a[1]).map(([n, cnt]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:14px"><div>${n}</div><div style="display:flex;align-items:center;gap:8px"><div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.round(cnt / mx * 100)}%"></div></div><strong style="min-width:28px;text-align:right">${cnt}</strong></div></div>`).join('')}</div></div>`;
 }
+function setProgressFilter(f) { progressFilter = f; renderDashboard(); }
+
+function getFilteredCount(items) {
+  if (progressFilter === 'all') return items.length;
+  if (progressFilter === 'inventoried') return items.filter(r => updates[r.cbi]).length;
+  if (progressFilter === 'pending') return items.filter(r => !updates[r.cbi]).length;
+  if (progressFilter === 'found') return items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
+  if (progressFilter === 'notfound') return items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
+  return items.length;
+}
+
 function drillTo(site, bat, etage) { drillState = { site, bat, etage }; renderDashboard(); }
 function navFromDash(btn) { navigateTo(btn.dataset.site, btn.dataset.bat, btn.dataset.etage, btn.dataset.bureau); goView('inventory'); }
 
@@ -1130,8 +1152,59 @@ function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi 
 function openEditItem(item) {
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px"><i class="ti ti-transfer"></i> Emplacement actuel</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="flex:1;font-size:13px;background:var(--bg2);padding:8px 12px;border-radius:var(--radius);color:var(--text2)">${item.site} › ${item.bat} › ${item.etage} › ${item.bureau}</div>
+        ${curLoc.bureau && (curLoc.bureau !== item.bureau || curLoc.etage !== item.etage || curLoc.bat !== item.bat || curLoc.site !== item.site)
+          ? `<button class="btn btn-sm" style="background:var(--accent-bg);color:var(--accent);border-color:var(--info-ring);white-space:nowrap" onclick="transferArticle('${item.cbi}')"><i class="ti ti-transfer"></i> Transférer ici</button>`
+          : ''}
+      </div>
+      ${curLoc.bureau && (curLoc.bureau !== item.bureau || curLoc.etage !== item.etage || curLoc.bat !== item.bat || curLoc.site !== item.site)
+        ? `<div style="font-size:11px;color:var(--info-txt);background:var(--info-bg);padding:6px 10px;border-radius:var(--radius)"><i class="ti ti-info-circle"></i> Transférer cet article vers : <strong>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</strong></div>`
+        : `<div style="font-size:11px;color:var(--text3)">L'article est déjà dans l'emplacement d'inventaire actuel</div>`}
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
 }
+async function transferArticle(cbi) {
+  if (!curLoc.bureau) { showToast('Sélectionnez un emplacement d\'inventaire d\'abord', 'warn'); return; }
+  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+  if (!item) return;
+  
+  const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
+  const newLoc = curLoc.site + ' › ' + curLoc.bat + ' › ' + curLoc.etage + ' › ' + curLoc.bureau;
+  
+  if (!confirm('Transférer cet article ?\n\nDe : ' + oldLoc + '\nVers : ' + newLoc)) return;
+  
+  // Mettre à jour l'emplacement de l'article
+  item.site = curLoc.site;
+  item.bat = curLoc.bat;
+  item.etage = curLoc.etage;
+  item.bureau = curLoc.bureau;
+  
+  // Enregistrer le transfert dans les updates
+  const u = updates[cbi] || { serv: item.serv, renouv: item.renouv, obs: '', trouve: '', by: currentUser, ts: Date.now() };
+  u.obs = (u.obs ? u.obs + ' | ' : '') + 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
+  u.by = currentUser;
+  u.ts = Date.now();
+  updates[cbi] = u;
+  
+  // Écrire le transfert dans Google Sheets
+  if (gTok) {
+    try {
+      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs, u.by, new Date(u.ts).toISOString(), '', u.trouve || '']]);
+      // Mettre à jour le nouvel emplacement dans NewItems si c'est un article existant
+      await sAppend(SH_NEW, [[cbi, item.cbe, curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau, item.fam, item.art, item.qty, item.serv, item.renouv, 'TRANSFERT: ' + oldLoc, item.marque || '', item.modele || '', item.serie || '', currentUser, new Date().toISOString()]]);
+    } catch(e) {}
+  }
+  
+  saveLocal();
+  closeModal();
+  renderMain();
+  renderDataStatus();
+  showToast('Article transféré vers ' + curLoc.bureau, 'success');
+}
+
 async function saveUpd(cbi) {
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
@@ -1215,6 +1288,91 @@ function saveAndSignIn() { closeModal(); startGoogleLogin(); }
 async function saveAndLoad() { closeModal(); if (!gTok) { startGoogleLogin(); return; } await loadFromSheets(); }
 
 function renderTopbarActions() { const el = document.getElementById('topbar-actions'); if (el) el.innerHTML = '<button class="btn btn-sm" onclick="openScanLibre()" title="Scan libre"><i class="ti ti-scan"></i></button>'; }
+
+
+// ---------- MODIFIER EMPLACEMENT ----------
+function openEditLocation(site, bat, etage, bureau) {
+  const items = getItemsAt(site, bat, etage, bureau);
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-edit"></i> Modifier emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">
+    <div class="item-box">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">${bureau}</div>
+      <div style="font-size:12px;color:var(--text2)">${site} › ${bat} › ${etage}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:6px">${items.length} article(s) dans cet emplacement</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nouveau nom du bureau</label>
+      <input type="text" id="el-bureau" value="${bureau}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Déplacer vers un autre étage (optionnel)</label>
+      <select id="el-etage">
+        <option value="">-- Garder l'étage actuel (${etage}) --</option>
+        ${Object.keys((HIER[site]||{})[bat]||{}).sort().filter(e=>e!==etage).map(e=>`<option value="${e}">${e}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Déplacer vers un autre bâtiment (optionnel)</label>
+      <select id="el-bat">
+        <option value="">-- Garder le bâtiment actuel (${bat}) --</option>
+        ${Object.keys(HIER[site]||{}).sort().filter(b=>b!==bat).map(b=>`<option value="${b}">${b}</option>`).join('')}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" onclick="saveEditLocation('${site}','${bat}','${etage}','${bureau}')"><i class="ti ti-check"></i> Enregistrer</button>
+    </div></div>`);
+}
+
+async function saveEditLocation(oldSite, oldBat, oldEtage, oldBureau) {
+  const newBureau = document.getElementById('el-bureau').value.trim();
+  const newEtage = document.getElementById('el-etage').value || oldEtage;
+  const newBat = document.getElementById('el-bat').value || oldBat;
+  if (!newBureau) { showToast('Le nom du bureau est requis', 'warn'); return; }
+  
+  const moved = (newBureau !== oldBureau || newEtage !== oldEtage || newBat !== oldBat);
+  
+  // Mettre à jour les articles dans DB et newItems
+  [...DB, ...newItems].forEach(r => {
+    if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau) {
+      r.bureau = newBureau;
+      r.etage = newEtage;
+      r.bat = newBat;
+    }
+  });
+  
+  // Mettre à jour la hiérarchie
+  if (HIER[oldSite] && HIER[oldSite][oldBat] && HIER[oldSite][oldBat][oldEtage]) {
+    const idx = HIER[oldSite][oldBat][oldEtage].indexOf(oldBureau);
+    if (idx >= 0) HIER[oldSite][oldBat][oldEtage].splice(idx, 1);
+  }
+  if (!HIER[oldSite][newBat]) HIER[oldSite][newBat] = {};
+  if (!HIER[oldSite][newBat][newEtage]) HIER[oldSite][newBat][newEtage] = [];
+  if (!HIER[oldSite][newBat][newEtage].includes(newBureau)) {
+    HIER[oldSite][newBat][newEtage].push(newBureau);
+    HIER[oldSite][newBat][newEtage].sort();
+  }
+  
+  // Enregistrer le changement dans Google Sheets
+  if (gTok) {
+    try {
+      await sAppend(SH_LOC, [[oldSite, newBat, newEtage, newBureau, '', 'MODIFIE (ex: ' + oldBureau + ')', currentUser, new Date().toISOString()]]);
+    } catch(e) {}
+  }
+  
+  saveLocal();
+  closeModal();
+  buildHier();
+  
+  // Si on est dans la vue inventaire avec cet emplacement, naviguer vers le nouveau
+  if (curLoc.site === oldSite && curLoc.bat === oldBat && curLoc.etage === oldEtage && curLoc.bureau === oldBureau) {
+    navigateTo(oldSite, newBat, newEtage, newBureau);
+  }
+  
+  if (currentView === 'locations') renderLocationsView();
+  else renderMain();
+  renderDataStatus();
+  showToast(moved ? `Bureau déplacé vers ${newBat} › ${newEtage} › ${newBureau}` : `Bureau renommé en "${newBureau}"`, 'success');
+}
 
 // ---------- OPEN ADD LOCATION ----------
 function openAddLocation() {
