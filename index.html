@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.7 -->
+<!-- VERSION 6.0 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -932,11 +932,16 @@ function renderMain() {
       <div class="pbar" style="height:8px;border-radius:4px"><div class="pbar-fill" style="width:${pct}%;border-radius:4px;background:${barColor}"></div></div>
     </div>
 
-    <!-- Zone de scan -->
+    <!-- Zone de scan avec indicateurs 3 cas -->
     <div class="scan-zone">
       <i class="ti ti-scan"></i>
-      <input type="text" id="scan-inp" placeholder="Scanner code barre article puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none">
+      <input type="text" id="scan-inp" placeholder="Scanner un code barre puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none">
       <span class="scan-hint">↵</span>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;font-size:11px">
+      <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success-txt);background:var(--success-bg);padding:3px 8px;border-radius:8px"><i class="ti ti-edit" style="font-size:11px"></i> Article ici → Mise à jour</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;color:var(--warn-txt);background:var(--warn-bg);padding:3px 8px;border-radius:8px"><i class="ti ti-transfer" style="font-size:11px"></i> Article ailleurs → Transfert</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;color:var(--text2);background:var(--bg2);padding:3px 8px;border-radius:8px"><i class="ti ti-alert-circle" style="font-size:11px"></i> Inconnu → Bouton "Ajouter"</span>
     </div>
 
     <!-- Recherche et filtre -->
@@ -949,6 +954,7 @@ function renderMain() {
         <option value="HORS SERVICE">Hors service</option>
         <option value="A METTRE AU REBUT">À rebut</option>
       </select>
+      <button class="btn btn-primary btn-sm" onclick="openAddItem()" title="Ajouter un article manuellement"><i class="ti ti-plus"></i> Ajouter</button>
     </div>
 
     <!-- Conteneur de la table -->
@@ -1164,7 +1170,31 @@ function renderLocationsView() {
   const main = document.getElementById('main');
   const sites = Object.keys(HIER).sort();
   if (!sites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
-  let html = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Emplacements</div><button class="btn btn-sm btn-primary" onclick="openAddLocation()"><i class="ti ti-plus"></i> Ajouter</button></div>`;
+  let html = `
+    <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="font-size:18px;font-weight:700">Emplacements</div>
+      <button class="btn btn-sm btn-primary" onclick="openAddLocation()"><i class="ti ti-plus"></i> Ajouter</button>
+    </div>
+
+    <!-- Zone de scan pour accès rapide -->
+    <div class="scan-zone" style="margin-bottom:10px">
+      <i class="ti ti-scan"></i>
+      <input type="text" id="loc-search-scan" placeholder="Scanner code barre emplacement…" onkeydown="onLocSearchScan(event)" autocomplete="off" inputmode="none">
+      <span class="scan-hint">↵</span>
+    </div>
+
+    <!-- Recherche texte -->
+    <div class="search-row" style="margin-bottom:14px">
+      <input type="text" id="loc-search-text" placeholder="Rechercher un bureau, étage, bâtiment…" oninput="debounceLocSearch()" style="margin:0;flex:1">
+      <button class="btn btn-sm" onclick="clearLocSearch()" title="Effacer"><i class="ti ti-x"></i></button>
+    </div>
+
+    <!-- Résultats de recherche (caché par défaut) -->
+    <div id="loc-search-results" style="display:none;margin-bottom:14px"></div>
+
+    <!-- Liste des sites -->
+    <div id="loc-sites-list">
+  `;
   // Rendu niveau 1 : sites seulement (pas de contenu enfant)
   sites.forEach(site => {
     const stats = getStatsFor(site, null, null, null);
@@ -1183,7 +1213,103 @@ function renderLocationsView() {
       <div class="loc-site-content" style="display:none;border-top:1px solid var(--border)"></div>
     </div>`;
   });
+  html += `</div>`;
   main.innerHTML = html;
+  setTimeout(() => document.getElementById('loc-search-scan')?.focus(), 100);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  RECHERCHE EMPLACEMENT
+// ─────────────────────────────────────────────────────────────
+function onLocSearchScan(e) {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  e.target.value = '';
+  if (!v) return;
+  // Chercher l'emplacement par code barre EMP
+  // 1. Dans la base d'articles (le CBE de l'article = code de son emplacement)
+  const item = [...DB, ...newItems].find(r => r.cbe === v && !r._newLoc);
+  if (item) {
+    showLocSearchResult([{ site: item.site, bat: item.bat, etage: item.etage, bureau: item.bureau }], 'Code emplacement : ' + v);
+    return;
+  }
+  // 2. Dans les nouveaux emplacements créés
+  const loc = newLocs.find(l => l.cbe === v);
+  if (loc) {
+    showLocSearchResult([{ site: loc.site, bat: loc.bat, etage: loc.etage, bureau: loc.bureau }], 'Code emplacement : ' + v);
+    return;
+  }
+  showToast('Code emplacement "' + v + '" introuvable', 'warn');
+}
+
+let _locSearchTimer;
+function debounceLocSearch() {
+  clearTimeout(_locSearchTimer);
+  _locSearchTimer = setTimeout(performLocTextSearch, 200);
+}
+
+function performLocTextSearch() {
+  const q = (document.getElementById('loc-search-text')?.value || '').trim().toLowerCase();
+  if (!q || q.length < 2) {
+    document.getElementById('loc-search-results').style.display = 'none';
+    document.getElementById('loc-sites-list').style.display = '';
+    return;
+  }
+  // Construire tous les emplacements et filtrer
+  const matches = [];
+  for (const site in HIER) {
+    for (const bat in HIER[site]) {
+      for (const etage in HIER[site][bat]) {
+        for (const bureau of HIER[site][bat][etage]) {
+          const blob = (site + ' ' + bat + ' ' + etage + ' ' + bureau).toLowerCase();
+          if (blob.includes(q)) {
+            matches.push({ site, bat, etage, bureau });
+          }
+        }
+      }
+    }
+  }
+  showLocSearchResult(matches.slice(0, 30), q, matches.length);
+}
+
+function showLocSearchResult(results, query, totalCount) {
+  const el = document.getElementById('loc-search-results');
+  const listEl = document.getElementById('loc-sites-list');
+  if (!el) return;
+  if (listEl) listEl.style.display = 'none';
+  el.style.display = '';
+  if (!results.length) {
+    el.innerHTML = '<div class="alert alert-warn"><i class="ti ti-alert-circle"></i>Aucun emplacement trouvé pour "' + query + '"</div>';
+    return;
+  }
+  const tot = totalCount !== undefined ? totalCount : results.length;
+  el.innerHTML = `<div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:600">${tot} résultat${tot > 1 ? 's' : ''}${tot > results.length ? ' (' + results.length + ' affichés)' : ''} pour "${query}"</div>` +
+    results.map(r => {
+      const stats = getStatsFor(r.site, r.bat, r.etage, r.bureau);
+      const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+      return `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:6px">
+        <i class="ti ti-map-pin" style="font-size:14px;color:var(--text3)"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${r.bureau}</div>
+          <div style="font-size:11px;color:var(--text3)">${r.site} › ${r.bat} › ${r.etage}</div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
+        <span style="font-size:11px;color:var(--text3)">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" data-site="${r.site}" data-bat="${r.bat}" data-etage="${r.etage}" data-bureau="${r.bureau}" onclick="goToInventory(this)" title="Inventaire"><i class="ti ti-clipboard-check"></i></button>
+        <button class="btn btn-sm" onclick="openEditLocation('${r.site}','${r.bat}','${r.etage}','${r.bureau}')" title="Modifier"><i class="ti ti-edit"></i></button>
+      </div>`;
+    }).join('');
+}
+
+function clearLocSearch() {
+  const txt = document.getElementById('loc-search-text');
+  const scan = document.getElementById('loc-search-scan');
+  if (txt) txt.value = '';
+  if (scan) scan.value = '';
+  const el = document.getElementById('loc-search-results');
+  const listEl = document.getElementById('loc-sites-list');
+  if (el) el.style.display = 'none';
+  if (listEl) listEl.style.display = '';
 }
 function toggleLocSite(el, site) {
   const content = el.nextElementSibling;
@@ -1482,26 +1608,64 @@ function onScanKey(e) {
   const v = e.target.value.trim();
   e.target.value = '';
   if (!v) return;
-  
-  // Chercher dans toute la base
+  if (!curLoc.bureau) { showToast('Sélectionnez un emplacement d\u2019abord', 'warn'); return; }
+
+  // Chercher dans toute la base (DB + nouveaux articles)
   const item = [...DB, ...newItems].find(r => (r.cbi === v || r.cbe === v) && !r._newLoc);
-  
+
+  // ════════════════════════════════════════════════════════════
+  // CAS 3 : Code barre INCONNU → proposer d'ajouter manuellement
+  // ════════════════════════════════════════════════════════════
   if (!item) {
-    showToast(`Code "${v}" introuvable dans la base`, 'warn');
+    showCodeNotFoundModal(v);
     return;
   }
-  
-  // L'article est-il dans le bureau actuel ?
-  const isHere = item.site === curLoc.site && item.bat === curLoc.bat && item.etage === curLoc.etage && item.bureau === curLoc.bureau;
-  
+
+  // L'article existe dans la base
+  const isHere = item.site === curLoc.site && item.bat === curLoc.bat
+              && item.etage === curLoc.etage && item.bureau === curLoc.bureau;
+
   if (isHere) {
-    // Article dans le bon bureau → ouvrir la fiche de mise à jour
+    // ══════════════════════════════════════════════════════════
+    // CAS 1 : Article DANS le bureau actuel → mise à jour
+    // ══════════════════════════════════════════════════════════
     openEditItem(item);
   } else {
-    // Article trouvé MAIS dans un autre emplacement → proposer le transfert
+    // ══════════════════════════════════════════════════════════
+    // CAS 2 : Article AILLEURS → proposer le transfert
+    // ══════════════════════════════════════════════════════════
     openTransferModal(item);
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Modal "Code introuvable" - propose d'aller ajouter manuellement
+// ─────────────────────────────────────────────────────────────
+function showCodeNotFoundModal(scannedCode) {
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2 style="color:var(--warn-txt)"><i class="ti ti-alert-circle"></i> Code introuvable</h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-warn">
+        <i class="ti ti-barcode"></i>
+        <div>Le code barre <strong>${scannedCode}</strong> n'existe pas dans la base.</div>
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">
+        Si vous souhaitez l'ajouter comme nouvel article, utilisez le bouton <strong>Ajouter</strong>.<br>
+        Le code sera pré-rempli automatiquement.
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Fermer</button>
+        <button class="btn btn-primary" data-code="${scannedCode}" onclick="closeModal();openAddItem(this.dataset.code)"><i class="ti ti-plus"></i> Ajouter un article</button>
+      </div>
+    </div>`);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  openNewArticleModal supprimé — remplacé par openAddItem(prefilledCode)
+// ─────────────────────────────────────────────────────────────
 
 function openTransferModal(item) {
   const u = updates[item.cbi] || {};
@@ -1690,10 +1854,14 @@ async function saveUpd(cbi) {
   showToast('✓ Article mis à jour', 'success');
   await writeUpd(cbi, u);
 }
-function openAddItem() {
+function openAddItem(prefilledCode) {
   const fams = Object.keys(FAMS).sort();
   if (!fams.length) { showToast("Chargez d'abord les données", 'warn'); return; }
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}<div class="form-row"><div class="form-group"><label class="form-label">Code barre IMMO *</label><input type="text" id="n-cbi" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)"><div id="n-cbi-msg" style="display:none"></div></div><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="n-cbe" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)"><div id="n-cbe-msg" style="display:none"></div></div></div><div class="form-row"><div class="form-group"><label class="form-label">Famille *</label><select id="n-fam" onchange="nFamChange()">${Object.keys(FAMS).sort().map(f => `<option>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div></div><div class="form-row"><div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div><div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div></div><div class="form-row"><div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div><div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="n-sv">${ES.map(x => `<option>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button></div></div>`);
+  // Si un code est fourni, déterminer si c'est CBI ou CBE selon le préfixe
+  const isCbe = prefilledCode && String(prefilledCode).startsWith('31');
+  const cbiVal = prefilledCode && !isCbe ? prefilledCode : '';
+  const cbeVal = prefilledCode && isCbe ? prefilledCode : '';
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}${prefilledCode ? `<div class="alert alert-success" style="margin-bottom:14px"><i class="ti ti-barcode"></i><div>Code scanné : <strong>${prefilledCode}</strong> — pré-rempli ci-dessous</div></div>` : ''}<div class="form-row"><div class="form-group"><label class="form-label">Code barre IMMO *</label><input type="text" id="n-cbi" value="${cbiVal}" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)"><div id="n-cbi-msg" style="display:none"></div></div><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="n-cbe" value="${cbeVal}" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)"><div id="n-cbe-msg" style="display:none"></div></div></div><div class="form-row"><div class="form-group"><label class="form-label">Famille *</label><select id="n-fam" onchange="nFamChange()">${Object.keys(FAMS).sort().map(f => `<option>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div></div><div class="form-row"><div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div><div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div></div><div class="form-row"><div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div><div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="n-sv">${ES.map(x => `<option>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button></div></div>`);
   nFamChange();
 }
 function nFamChange() { const f = document.getElementById('n-fam').value; document.getElementById('n-art').innerHTML = (FAMS[f] || []).map(a => `<option>${a}</option>`).join(''); }
