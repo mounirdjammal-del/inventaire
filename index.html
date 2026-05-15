@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 5.5 -->
+<!-- VERSION 5.7 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -909,8 +909,54 @@ function renderMain() {
     renderInventoryHome();
     return;
   }
-  // ── Bureau sélectionné : afficher la liste des articles ──
+  // ── Bureau sélectionné : créer la page d'inventaire et afficher la liste ──
+  const items = getItems();
+  const inv = items.filter(r => updates[r.cbi]).length;
+  const pct = items.length ? Math.round(inv / items.length * 100) : 0;
+  const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)';
+
+  main.innerHTML = `
+    <!-- Bandeau emplacement actuel -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Emplacement actuel</div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">${curLoc.bureau}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:24px;font-weight:800;color:${barColor};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
+          <div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div>
+        </div>
+      </div>
+      <div class="pbar" style="height:8px;border-radius:4px"><div class="pbar-fill" style="width:${pct}%;border-radius:4px;background:${barColor}"></div></div>
+    </div>
+
+    <!-- Zone de scan -->
+    <div class="scan-zone">
+      <i class="ti ti-scan"></i>
+      <input type="text" id="scan-inp" placeholder="Scanner code barre article puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none">
+      <span class="scan-hint">↵</span>
+    </div>
+
+    <!-- Recherche et filtre -->
+    <div class="search-row">
+      <input type="text" id="srch" placeholder="Rechercher article…" oninput="debounceRenderTable()">
+      <select id="filt" onchange="renderTable()">
+        <option value="">Tous</option>
+        <option value="__ni">Non inventoriés</option>
+        <option value="EN SERVICE">En service</option>
+        <option value="HORS SERVICE">Hors service</option>
+        <option value="A METTRE AU REBUT">À rebut</option>
+      </select>
+    </div>
+
+    <!-- Conteneur de la table -->
+    <div id="twrap"></div>
+  `;
+
   renderTable();
+  setTimeout(() => document.getElementById('scan-inp')?.focus(), 100);
 }
 
 function renderInventoryHome() {
@@ -929,12 +975,18 @@ function renderInventoryHome() {
     const [site, bat, etage, bureau] = key.split('|');
     const invCount = items.filter(r => updates[r.cbi]).length;
     if (invCount === 0) continue; // Pas commencé
+    // Trouver le dernier inventoriste et la dernière date
+    let lastTs = 0, lastBy = '';
+    for (const r of items) {
+      const u = updates[r.cbi];
+      if (u && u.ts > lastTs) { lastTs = u.ts; lastBy = u.by || ''; }
+    }
     bureauStats[key] = {
       site, bat, etage, bureau,
       total: items.length,
       inv: invCount,
       pct: Math.round(invCount / items.length * 100),
-      lastTs: Math.max(...items.filter(r => updates[r.cbi]).map(r => updates[r.cbi].ts || 0)),
+      lastTs, lastBy,
       isComplete: invCount === items.length
     };
   }
@@ -980,20 +1032,26 @@ function renderInventoryHome() {
         <div style="font-size:14px;font-weight:700">En cours (${enCours.length})</div>
       </div>
       ${enCours.slice(0, 10).map(b => `
-        <div class="hier-row clickable" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="resumeInventory(this)" style="cursor:pointer;margin-bottom:8px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div class="hier-row clickable" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" style="margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer" onclick="resumeInventory(this.parentElement)">
             <div style="flex:1;min-width:0">
               <div style="font-size:14px;font-weight:700;margin-bottom:3px">${b.bureau}</div>
               <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage}</div>
-              <div style="font-size:11px;color:var(--text2);margin-top:4px">${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                ${b.lastBy ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:10px;font-weight:600"><i class="ti ti-user" style="font-size:11px"></i>${b.lastBy}</span>` : ''}
+                <span style="color:var(--text3);font-size:10px"><i class="ti ti-clock" style="font-size:10px"></i> ${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:16px;font-weight:800;color:var(--warn-txt)">${b.pct}%</div>
               <div style="font-size:11px;color:var(--text3)">${b.inv}/${b.total}</div>
             </div>
-            <i class="ti ti-arrow-right" style="font-size:18px;color:var(--text3);flex-shrink:0"></i>
           </div>
           <div class="pbar" style="margin-top:8px"><div class="pbar-fill" style="width:${b.pct}%;background:var(--warn-txt)"></div></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-sm btn-primary" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="event.stopPropagation();resumeInventory(this)" style="flex:1"><i class="ti ti-clipboard-check"></i> Continuer l'inventaire</button>
+            <button class="btn btn-sm" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="event.stopPropagation();openBureauArticles(this)" title="Voir les articles"><i class="ti ti-list"></i></button>
+          </div>
         </div>
       `).join('')}
     </div>` : ''}
@@ -1013,6 +1071,7 @@ function renderInventoryHome() {
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600">${b.bureau}</div>
               <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage} · ${b.total} articles</div>
+              ${b.lastBy ? `<div style="font-size:11px;color:var(--success-txt);margin-top:3px"><i class="ti ti-user" style="font-size:10px"></i> Terminé par ${b.lastBy}</div>` : ''}
             </div>
             <i class="ti ti-arrow-right" style="font-size:16px;color:var(--text3);flex-shrink:0"></i>
           </div>
@@ -1031,6 +1090,42 @@ function renderInventoryHome() {
 
 function resumeInventory(el) {
   navigateTo(el.dataset.site, el.dataset.bat, el.dataset.etage, el.dataset.bureau);
+}
+
+function openBureauArticles(el) {
+  const site = el.dataset.site, bat = el.dataset.bat, etage = el.dataset.etage, bureau = el.dataset.bureau;
+  // Articles inventoriés dans ce bureau, triés par date de mise à jour (plus récent en premier)
+  const items = (LOC_INDEX[site+'|'+bat+'|'+etage+'|'+bureau] || [])
+    .filter(r => updates[r.cbi])
+    .sort((a,b) => (updates[b.cbi]?.ts || 0) - (updates[a.cbi]?.ts || 0));
+  
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-list-check"></i> Articles inventoriés</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">
+    <div style="background:var(--bg2);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:2px">${bureau}</div>
+      <div style="font-size:12px;color:var(--text2)">${site} › ${bat} › ${etage}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">${items.length} article(s) inventorié(s) — cliquez pour modifier</div>
+    </div>
+    ${items.map(item => {
+      const u = updates[item.cbi];
+      const sv = u.serv || item.serv;
+      const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
+      const trouve = u.trouve || '';
+      return `<div class="t-row inventoried" data-cbi="${item.cbi}" onclick="closeModal();setTimeout(()=>openEditItem_cbi(this.dataset.cbi),100)" style="grid-template-columns:1fr 100px 32px;cursor:pointer;border-radius:var(--radius);margin-bottom:6px;border:1px solid var(--border)">
+        <div style="overflow:hidden">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.art}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${item.cbi} · ${u.by || ''} — ${new Date(u.ts).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+          ${trouve === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt);font-size:10px;margin-top:3px;display:inline-block">✗ Non trouvé</span>' : ''}
+        </div>
+        <div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div>
+        <div><i class="ti ti-edit" style="color:var(--text3)"></i></div>
+      </div>`;
+    }).join('')}
+    ${!items.length ? '<div style="text-align:center;padding:30px;color:var(--text2)">Aucun article inventorié</div>' : ''}
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Fermer</button>
+      <button class="btn btn-primary" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="closeModal();resumeInventory(this)"><i class="ti ti-clipboard-check"></i> Aller à l'inventaire</button>
+    </div>
+  </div>`);
 }
 
 
