@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 6.0 -->
+<!-- VERSION 6.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -354,15 +354,11 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
         <div class="sidebar-section">
           <div class="sidebar-label">Données</div>
           <div id="data-status"></div>
-          <button class="btn btn-block" onclick="document.getElementById('file-inp').click()"><i class="ti ti-upload"></i> Charger Excel local</button>
-          <input type="file" id="file-inp" accept=".xlsx,.xls" style="display:none" onchange="loadExcel(this)">
         </div>
         <div class="sidebar-section" id="sidebar-admin-btns"></div>
         <div class="sidebar-section">
           <div class="sidebar-label">Session</div>
           <button class="btn btn-block" onclick="changeUser()"><i class="ti ti-logout"></i> Changer de compte</button>
-          <button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>
-          <button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>
         </div>
       </div>
     </div>
@@ -389,7 +385,19 @@ const USER_NAMES = {
 };
 
 // Tous les utilisateurs Google connectés sont administrateurs (aucune restriction)
-function can(permission) { return true; }
+// ─── GESTION DES RÔLES ───────────────────────────────────────
+const ROLES = {
+  'mounir.djammal@gmail.com': 'admin',
+  'operateurmafintec5@gmail.com': 'user',
+};
+const DEFAULT_ROLE = 'user';
+const PERMISSIONS = {
+  admin: { canExport: true, canReset: true, canSuivi: true, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: true },
+  user:  { canExport: false, canReset: false, canSuivi: false, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: false },
+};
+let currentRole = 'user';
+function getRole(email) { return email ? (ROLES[email.toLowerCase()] || DEFAULT_ROLE) : DEFAULT_ROLE; }
+function can(permission) { return !!(PERMISSIONS[currentRole] || PERMISSIONS.user)[permission]; }
 
 const ES = ['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
 const ER = ['BON','MOYEN','VETUSTE'];
@@ -406,6 +414,8 @@ const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
 let driveFolderId = null;
 let DB = [], HIER = {}, FAMS = {};
 let LOC_INDEX = {}; // cache: 'site|bat|etage|bureau' -> [items]
+let CBI_INDEX = {}; // cache: cbi -> item (lookup O(1))
+let CBE_INDEX = {}; // cache: cbe -> item
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
@@ -510,15 +520,21 @@ async function fetchGoogleProfile() {
       picture: info.picture || ''
     };
     currentUser = googleProfile.name;
+    currentRole = getRole(email);
     localStorage.setItem('inv_google_email', email);
     localStorage.setItem('inv_user', currentUser);
+    localStorage.setItem('inv_role', currentRole);
     sessionStorage.setItem('gProfile', JSON.stringify(googleProfile));
   } catch(e) {
     const saved = localStorage.getItem('inv_user');
     if (saved) currentUser = saved;
-    googleProfile = { name: currentUser || 'Utilisateur', email: '', picture: '' };
+    const savedEmail = localStorage.getItem('inv_google_email') || '';
+    currentRole = getRole(savedEmail);
+    googleProfile = { name: currentUser || 'Utilisateur', email: savedEmail, picture: '' };
   }
   renderUserBadge();
+  renderTopbarActions();
+  renderSidebarActions();
 }
 function restoreProfile() {
   try {
@@ -526,6 +542,7 @@ function restoreProfile() {
     if (p.email) {
       googleProfile = p;
       currentUser = p.name;
+      currentRole = getRole(p.email);
       return true;
     }
   } catch(e) {}
@@ -647,7 +664,7 @@ async function pullUpdates() {
         updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', by: by || '', ts: t, trouve: trouve || '' };
         // Si un emplacement est indiqué, mettre à jour l'article
         if (site && bureau) {
-          const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+          const item = findItemByCbi(cbi);
           if (item && (item.site !== site || item.bat !== bat || item.etage !== etage || item.bureau !== bureau)) {
             const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
             if (LOC_INDEX[oldKey]) {
@@ -669,7 +686,7 @@ async function pullNewItems() {
     const d = await sGet(`${SH_NEW}!A2:Q`);
     for (const row of (d.values || [])) {
       const [cbi, cbe, site, bat, etage, bureau, fam, art, qty, serv, renouv, obs, marque, modele, serie, by, ts] = row;
-      if (!cbi || [...DB, ...newItems].find(r => r.cbi === cbi)) continue;
+      if (!cbi || findItemByCbi(cbi)) continue;
       newItems.push({ cbi, cbe: cbe || '', site: site || '', bat: bat || '', etage: etage || '', bureau: bureau || '', fam: fam || '', art: art || '', qty: parseInt(qty) || 1, serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', marque: marque || '', modele: modele || '', serie: serie || '', prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: by || '', _addedAt: ts ? new Date(ts).getTime() : Date.now() });
     }
     if ([...DB, ...newItems].some(r => r._new)) buildHier();
@@ -702,7 +719,7 @@ async function pullSuivi() {
 }
 async function writeUpd(cbi, u) {
   // Trouver l'emplacement actuel de l'article
-  const item = [...DB, ...newItems].find(r => r.cbi === cbi) || {};
+  const item = findItemByCbi(cbi) || {};
   const loc = { site: item.site || '', bat: item.bat || '', etage: item.etage || '', bureau: item.bureau || '' };
   if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); return; }
   try { await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '', loc.site, loc.bat, loc.etage, loc.bureau]]); } catch(e) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); }
@@ -775,8 +792,11 @@ async function syncNow() {
 function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(() => { if (gTok) syncNow(); }, 30000); }
 
 // ---------- HIERARCHY ----------
+function findItemByCbi(cbi) { return CBI_INDEX[cbi] || null; }
+function findItemByCbe(cbe) { return CBE_INDEX[cbe] || null; }
+function findItemByCode(code) { return CBI_INDEX[code] || CBE_INDEX[code] || null; }
 function buildHier() {
-  HIER = {}; FAMS = {}; LOC_INDEX = {};
+  HIER = {}; FAMS = {}; LOC_INDEX = {}; CBI_INDEX = {}; CBE_INDEX = {};
   const all = [...DB, ...newItems];
   for (let i = 0; i < all.length; i++) {
     const r = all[i];
@@ -786,12 +806,15 @@ function buildHier() {
     if (!HIER[r.site][r.bat][r.etage]) HIER[r.site][r.bat][r.etage] = new Set();
     HIER[r.site][r.bat][r.etage].add(r.bureau);
     if (r.fam && r.art) { if (!FAMS[r.fam]) FAMS[r.fam] = new Set(); FAMS[r.fam].add(r.art); }
-    // Indexer par emplacement
+    // Index par emplacement
     if (!r._newLoc) {
       const key = r.site + '|' + r.bat + '|' + r.etage + '|' + r.bureau;
       if (!LOC_INDEX[key]) LOC_INDEX[key] = [];
       LOC_INDEX[key].push(r);
     }
+    // Index par CBI et CBE pour lookup O(1)
+    if (r.cbi) CBI_INDEX[r.cbi] = r;
+    if (r.cbe) CBE_INDEX[r.cbe] = r;
   }
   for (const s in HIER) for (const b in HIER[s]) for (const e in HIER[s][b]) HIER[s][b][e] = [...HIER[s][b][e]].sort();
   for (const f in FAMS) FAMS[f] = [...FAMS[f]].sort();
@@ -841,11 +864,23 @@ function renderUserBadge() {
   const el = document.getElementById('user-area');
   if (!el) return;
   const name = googleProfile.name || currentUser || 'Utilisateur';
+  const roleBadge = currentRole === 'admin'
+    ? '<span style="background:#fff3cd;color:#856404;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px" title="Administrateur"><i class="ti ti-shield-check" style="font-size:10px"></i></span>'
+    : '';
   if (googleProfile.picture) {
-    el.innerHTML = `<div class="user-badge" style="padding:3px 10px 3px 4px;gap:7px"><img src="${googleProfile.picture}" style="width:26px;height:26px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"><span style="font-size:13px">${name}</span></div>`;
+    el.innerHTML = `<div class="user-badge" style="padding:3px 10px 3px 4px;gap:7px"><img src="${googleProfile.picture}" style="width:26px;height:26px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"><span style="font-size:13px">${name}</span>${roleBadge}</div>`;
   } else {
-    el.innerHTML = `<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i><span>${name}</span></div>`;
+    el.innerHTML = `<div class="user-badge"><i class="ti ti-user" style="font-size:13px"></i><span>${name}</span>${roleBadge}</div>`;
   }
+}
+function renderSidebarActions() {
+  const el = document.getElementById('sidebar-admin-btns');
+  if (!el) return;
+  let html = '';
+  if (can('canSuivi')) html += '<button class="btn btn-block" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi des sites</button>';
+  if (can('canExport')) html += '<button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>';
+  if (can('canReset')) html += '<button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>';
+  el.innerHTML = html;
 }
 function renderDataStatus() {
   const el = document.getElementById('data-status');
@@ -863,6 +898,7 @@ function goView(view) {
     if (el) el.className = 'nav-item' + (v === view ? ' active' : '');
   });
   const sidebar = document.getElementById('sidebar');
+  renderUserBadge();
   if (view === 'home') {
     sidebar.style.display = 'none';
     renderHome();
@@ -878,6 +914,7 @@ function goView(view) {
   } else if (view === 'progress') {
     sidebar.style.display = 'none';
     drillState = { site: null, bat: null, etage: null };
+    progressFilter = 'all';
     renderDashboard();
   }
 }
@@ -1228,7 +1265,7 @@ function onLocSearchScan(e) {
   if (!v) return;
   // Chercher l'emplacement par code barre EMP
   // 1. Dans la base d'articles (le CBE de l'article = code de son emplacement)
-  const item = [...DB, ...newItems].find(r => r.cbe === v && !r._newLoc);
+  const item = findItemByCbe(v && !r._newLoc);
   if (item) {
     showLocSearchResult([{ site: item.site, bat: item.bat, etage: item.etage, bureau: item.bureau }], 'Code emplacement : ' + v);
     return;
@@ -1564,7 +1601,7 @@ function onLocScanKey(e) {
   e.target.value = '';
   if (!v) return;
   if (!DB.length) { showLocFb('Chargez d\'abord les données', 'warn'); return; }
-  const found = [...DB, ...newItems].find(r => r.cbe === v);
+  const found = findItemByCbe(v);
   if (!found) { showLocFb(`"${v}" introuvable`, 'warn'); return; }
   navigateTo(found.site, found.bat, found.etage, found.bureau);
   showLocFb('✓ ' + found.bureau, 'success');
@@ -1611,7 +1648,7 @@ function onScanKey(e) {
   if (!curLoc.bureau) { showToast('Sélectionnez un emplacement d\u2019abord', 'warn'); return; }
 
   // Chercher dans toute la base (DB + nouveaux articles)
-  const item = [...DB, ...newItems].find(r => (r.cbi === v || r.cbe === v) && !r._newLoc);
+  const item = findItemByCode(v);
 
   // ════════════════════════════════════════════════════════════
   // CAS 3 : Code barre INCONNU → proposer d'ajouter manuellement
@@ -1718,7 +1755,7 @@ function openTransferModal(item) {
 }
 
 async function confirmTransferAndUpdate(cbi) {
-  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+  const item = findItemByCbi(cbi);
   if (!item || !curLoc.bureau) return;
   
   const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
@@ -1775,7 +1812,7 @@ async function confirmTransferAndUpdate(cbi) {
 }
 
 // ---------- EDIT/ADD ITEMS ----------
-function openEditItem_cbi(cbi) { const i = [...DB, ...newItems].find(r => r.cbi === cbi); if (i) openEditItem(i); }
+function openEditItem_cbi(cbi) { const i = findItemByCbi(cbi); if (i) openEditItem(i); }
 function openEditItem(item) {
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
@@ -1818,7 +1855,7 @@ function openEditItem(item) {
   }, 100);
 }
 async function saveUpd(cbi) {
-  const item = [...DB, ...newItems].find(r => r.cbi === cbi);
+  const item = findItemByCbi(cbi);
   if (!item) return;
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
@@ -1865,19 +1902,21 @@ function openAddItem(prefilledCode) {
   nFamChange();
 }
 function nFamChange() { const f = document.getElementById('n-fam').value; document.getElementById('n-art').innerHTML = (FAMS[f] || []).map(a => `<option>${a}</option>`).join(''); }
-function checkCbiField(inp) { const cbi = inp.value.trim(); const msg = document.getElementById('n-cbi-msg'); if (!cbi || !msg) return; const exist = [...DB, ...newItems].find(r => r.cbi === cbi); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà existant : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
-function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = [...DB, ...newItems].find(r => r.cbe === cbe); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà attribué : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
+function checkCbiField(inp) { const cbi = inp.value.trim(); const msg = document.getElementById('n-cbi-msg'); if (!cbi || !msg) return; const exist = findItemByCbi(cbi); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà existant : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
+function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = findItemByCbe(cbe); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà attribué : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
 async function saveNew() {
   const cbi = document.getElementById('n-cbi').value.trim();
   const cbe = document.getElementById('n-cbe').value.trim();
   if (!cbi) { showToast('Code barre IMMO requis', 'warn'); return; }
-  const existCbi = [...DB, ...newItems].find(r => r.cbi === cbi);
+  const existCbi = findItemByCbi(cbi);
   if (existCbi) { showDoublonModal('cbi', existCbi); return; }
-  if (cbe) { const existCbe = [...DB, ...newItems].find(r => r.cbe === cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
+  if (cbe) { const existCbe = findItemByCbe(cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
   const item = { ...curLoc, cbi, cbe, fam: document.getElementById('n-fam').value, art: document.getElementById('n-art').value, marque: document.getElementById('n-marque').value, modele: document.getElementById('n-modele').value, serie: document.getElementById('n-serie').value, qty: parseInt(document.getElementById('n-qty').value) || 1, serv: document.getElementById('n-sv').value, renouv: document.getElementById('n-rv').value, obs: document.getElementById('n-obs').value, prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: currentUser, _addedAt: Date.now() };
   newItems.push(item);
   updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
-  // Mettre à jour l'index
+  // Mettre à jour les index
+  CBI_INDEX[cbi] = item;
+  if (item.cbe) CBE_INDEX[item.cbe] = item;
   const locKey = item.site+'|'+item.bat+'|'+item.etage+'|'+item.bureau;
   if(!LOC_INDEX[locKey]) LOC_INDEX[locKey]=[];
   LOC_INDEX[locKey].push(item);
@@ -1910,7 +1949,7 @@ function compressImage(file, maxW, quality) { return new Promise((res, rej) => {
 async function updatePhotosInSheet(cbi) {
   if (!gTok || !gsConf.sheetId) return;
   const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n');
-  const item = [...DB, ...newItems].find(r => r.cbi === cbi) || {};
+  const item = findItemByCbi(cbi) || {};
   try {
     const d = await sGet(`${SH_UPD}!A2:G`);
     const rows = d.values || [];
@@ -1925,12 +1964,12 @@ async function updatePhotosInSheet(cbi) {
 }
 
 // ---------- EXPORT, RESET, SUIVI, SCAN LIBRE ----------
-function openExport() { const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
-function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = [...DB, ...newItems].find(r => r.cbi === cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
+function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'danger'); return; } const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
+function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
-function resetUpdates() { if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
-function openSuiviPanel() { if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } const sites = Object.keys(HIER).sort(); const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length; const totInv = Object.keys(updates).length; const totPct = totAll ? Math.round(totInv / totAll * 100) : 0; const rows = sites.map(site => { const allItems = [...DB, ...newItems].filter(r => r.site === site && !r._newLoc); const inv = allItems.filter(r => updates[r.cbi]).length; const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0; const st = siteStatuts[site] || { statut: 'NON OUVERT' }; const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)'; const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no'; const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join(''); return `<div class="site-card"><div class="statut-dot ${dotCls}"></div><div style="flex:1"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div><div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div><div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}</div><div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div></div>`; }).join(''); showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2><div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div></div><div class="modal-body"><div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:20px;font-weight:700">${totPct}%</div></div><div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div><div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div></div><div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px"><span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span><span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span><span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span></div>${rows}<div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)"><button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button></div></div>`); }
+function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
+function openSuiviPanel() { if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; } if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } const sites = Object.keys(HIER).sort(); const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length; const totInv = Object.keys(updates).length; const totPct = totAll ? Math.round(totInv / totAll * 100) : 0; const rows = sites.map(site => { const allItems = [...DB, ...newItems].filter(r => r.site === site && !r._newLoc); const inv = allItems.filter(r => updates[r.cbi]).length; const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0; const st = siteStatuts[site] || { statut: 'NON OUVERT' }; const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)'; const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no'; const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join(''); return `<div class="site-card"><div class="statut-dot ${dotCls}"></div><div style="flex:1"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div><div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div><div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}</div><div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div></div>`; }).join(''); showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2><div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div></div><div class="modal-body"><div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:20px;font-weight:700">${totPct}%</div></div><div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div><div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div></div><div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px"><span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span><span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span><span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span></div>${rows}<div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)"><button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button></div></div>`); }
 function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
 async function changeSiteStatut(site, statut) { await writeSuivi(site, statut, ''); openSuiviPanel(); renderMain(); showToast(site + ' → ' + statut, 'success'); }
 async function writeSuivi(site, statut, obs) { if (!gTok || !gsConf.sheetId) return; const now = new Date().toLocaleDateString('fr-FR'); const prev = siteStatuts[site] || {}; const dateDebut = prev.dateDebut || now; siteStatuts[site] = { statut, by: currentUser, dateDebut, dateMaj: now, obs: obs || prev.obs || '' }; saveLocal(); try { const d = await sGet(`${SH_SUIVI}!A2:A`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === site); const row = [site, statut, currentUser, dateDebut, now, obs || prev.obs || '']; if (idx >= 0) { await sPut(`${SH_SUIVI}!A${idx + 2}:F${idx + 2}`, [row]); } else { await sAppend(SH_SUIVI, [row]); } } catch(e) { console.error('Suivi write error', e); } }
@@ -1938,10 +1977,9 @@ async function generateExportFinal() { if (!DB.length) { showToast("Chargez d'ab
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
 function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
 function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${u.by}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${item.cbi}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${item.site}" data-bat="${item.bat}" data-etage="${item.etage}" data-bureau="${item.bureau}" onclick="navFromDash(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`; }
-function openEditFromScanLibre(cbi) { const item = [...DB, ...newItems].find(r => r.cbi === cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
+function openEditFromScanLibre(cbi) { const item = findItemByCbi(cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
 
 // ---------- EXCEL LOCAL ----------
-function loadExcel(inp) { const f = inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = e => { try { const wb = XLSX.read(e.target.result, { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json(ws, { defval: null }); DB = rows.map(r => ({ site: r['SITE'] || '', bat: r['BATIMENT'] || '', etage: r['ETAGE'] || '', bureau: r['BUREAU'] || '', cbe: String(r['CODE BARRE EMP'] || ''), cbi: String(r['CODE BARRE IMMO'] || ''), fam: r['FAMILLE ARTICLE'] || '', art: r['ARTICLE'] || '', qty: r['QUANTITE'] || 1, renouv: r['ETAT DE RENOUVELABILITE'] || 'BON', serv: r['ETAT DE SERVICE'] || 'EN SERVICE', obs: r['OBSERVATION'] || '', serie: r['NUMERO DE SERIE'] || '', modele: r['MODELE'] || '', marque: r['MARQUE'] || '', dir: r['DIRECTION'] || '', patrim: r['PATRIMOINE'] || '', nom_inv: r['NOM INVENTORISTE'] || '', prod: '' })).filter(r => r.cbi); buildHier(); renderDataStatus(); renderMain(); showToast(`${DB.length.toLocaleString()} articles chargés`, 'success'); } catch(err) { showToast('Erreur: ' + err.message, 'danger'); } }; r.readAsArrayBuffer(f); inp.value = ''; }
 
 // ---------- GOOGLE PANEL ----------
 function openGsPanel() { const _origin = window.location.origin; const _redirect = window.location.href.replace(/#.*/, '').replace(/\?.*/, ''); const _email = getStoredEmail(); const _remaining = gTok ? Math.max(0, Math.round((gTokExpiry - Date.now()) / 60000)) : 0; const _connectedHtml = gTok ? `<div class="alert alert-success" style="flex-wrap:wrap;gap:6px"><i class="ti ti-cloud-check"></i><div><strong>${_email || 'Connecté'}</strong><br><span style="font-size:12px">Session valide encore ~${_remaining} min · renouvellement automatique</span></div><button class="btn btn-sm" style="margin-left:auto;color:var(--danger-txt)" onclick="disconnectGoogle()"><i class="ti ti-logout"></i></button></div>` : ''; const _loadBtn = gTok ? '<button class="btn btn-primary" onclick="saveAndLoad()"><i class="ti ti-cloud-download"></i> Charger depuis Sheets</button>' : ''; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-brand-google"></i> Google Sheets</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${_connectedHtml}<details open style="margin-bottom:16px"><summary style="font-size:14px;font-weight:600;cursor:pointer;padding:8px 0;list-style:none;display:flex;align-items:center;gap:8px"><i class="ti ti-help-circle"></i> Guide de configuration</summary><div style="margin-top:12px"><div class="setup-step"><div class="step-n">1</div><div>Allez sur <a href="https://console.cloud.google.com" target="_blank" style="color:var(--info-txt)">console.cloud.google.com</a> → Nouveau projet → Activez <strong>Google Sheets API</strong> ET <strong>Google Drive API</strong></div></div><div class="setup-step"><div class="step-n">2</div><div><strong>APIs & Services → Identifiants → Créer → ID client OAuth 2.0</strong><br>Type : Application Web<br>Origines JS autorisées : <code>${_origin}</code><br>URI de redirection : <code>${_redirect}</code></div></div><div class="setup-step"><div class="step-n">3</div><div>Importez votre Excel dans Google Drive → Ouvrir avec Google Sheets → renommez la 1ère feuille <code>Inventaire</code> → partagez avec tous (Éditeur)</div></div><div class="setup-step"><div class="step-n">4</div><div>L'ID du fichier est dans l'URL : docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</div></div></div></details><div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:12px;color:var(--text2)"><div style="margin-bottom:4px"><strong>Client ID :</strong> ${APP_CLIENT_ID.substring(0, 24)}…</div><div><strong>Sheet ID :</strong> ${APP_SHEET_ID.substring(0, 20)}…</div><div style="margin-top:8px;color:var(--text3)">Pour modifier ces valeurs, éditez <code>index.html</code> et redéployez.</div></div><div class="modal-actions" style="flex-wrap:wrap"><button class="btn" onclick="saveGsOnly()"><i class="ti ti-device-floppy"></i> Sauvegarder</button><button class="btn btn-google" onclick="saveAndSignIn()"><svg style="width:18px;height:18px" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg> Se connecter</button>${_loadBtn}</div></div>`); }
