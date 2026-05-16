@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 6.1 -->
+<!-- VERSION 6.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1239,13 +1239,16 @@ function renderLocationsView() {
     const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
     const batsCount = Object.keys(HIER[site] || {}).length;
     html += `<div class="loc-site-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden">
-      <div style="padding:14px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleLocSite(this,'${site}')">
-        <i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i>
-        <div style="flex:1"><div style="font-size:15px;font-weight:700">${site}</div>
-        <div style="font-size:12px;color:var(--text2)">${batsCount} bâtiment(s) · ${stats.total} articles</div></div>
-        <span style="font-size:12px;font-weight:600;color:${stColor}">${st.statut}</span>
-        <span style="font-size:14px;font-weight:700;margin-left:8px">${stats.pct}%</span>
-        <i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3);transition:transform .2s"></i>
+      <div style="padding:14px;display:flex;align-items:center;gap:10px">
+        <div style="flex:1;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleLocSite(this.parentElement,'${site}')">
+          <i class="ti ti-building" style="font-size:18px;color:var(--text2)"></i>
+          <div style="flex:1"><div style="font-size:15px;font-weight:700">${site}</div>
+          <div style="font-size:12px;color:var(--text2)">${batsCount} bâtiment(s) · ${stats.total} articles</div></div>
+          <span style="font-size:12px;font-weight:600;color:${stColor}">${st.statut}</span>
+          <span style="font-size:14px;font-weight:700;margin-left:8px">${stats.pct}%</span>
+          <i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3);transition:transform .2s"></i>
+        </div>
+        <button class="btn btn-sm" style="min-height:32px;padding:0 8px;box-shadow:none" onclick="openEditLocation('${site}','','','')" title="Modifier ce site"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
       </div>
       <div class="loc-site-content" style="display:none;border-top:1px solid var(--border)"></div>
     </div>`;
@@ -1348,9 +1351,10 @@ function clearLocSearch() {
   if (el) el.style.display = 'none';
   if (listEl) listEl.style.display = '';
 }
-function toggleLocSite(el, site) {
-  const content = el.nextElementSibling;
-  const chevron = el.querySelector('.ti-chevron-down');
+function toggleLocSite(card, site) {
+  const content = card.querySelector('.loc-site-content');
+  const chevron = card.querySelector('.ti-chevron-down');
+  if (!content) return;
   if (content.style.display === 'none') {
     content.style.display = 'block';
     if (chevron) chevron.style.transform = 'rotate(180deg)';
@@ -1369,15 +1373,25 @@ function renderLocSiteContent(container, site) {
   let html = '';
   bats.forEach(bat => {
     const etages = Object.keys((HIER[site] || {})[bat] || {}).sort();
+    const batStats = getStatsFor(site, bat, null, null);
     html += `<div style="padding:10px 14px 10px 36px;border-bottom:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;cursor:pointer" onclick="toggleLocBat(this)">
-        <i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}
-        <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s"></i>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600" onclick="toggleLocBat(this)">
+          <i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}
+          <span style="font-size:11px;color:var(--text3);font-weight:500">· ${batStats.total} art. · ${batStats.pct}%</span>
+          <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s"></i>
+        </div>
+        <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','','')" title="Modifier ce bâtiment"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
       </div>
       <div class="loc-bat-content" style="display:none">`;
     etages.forEach(etage => {
       const bureaux = ((HIER[site] || {})[bat] || {})[etage] || [];
-      html += `<div style="margin-left:16px;margin-bottom:6px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px;font-weight:600">${etage}</div>`;
+      const etgStats = getStatsFor(site, bat, etage, null);
+      html += `<div style="margin-left:16px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <div style="flex:1;font-size:12px;color:var(--text2);font-weight:600">${etage} <span style="color:var(--text3);font-weight:500">· ${etgStats.total} art. · ${etgStats.pct}%</span></div>
+          <button class="btn btn-sm" style="min-height:24px;padding:0 5px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','')" title="Modifier cet étage"><i class="ti ti-edit" style="font-size:12px;color:var(--text3)"></i></button>
+        </div>`;
       bureaux.forEach(bureau => {
         const stats = getStatsFor(site, bat, etage, bureau);
         const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
@@ -1389,7 +1403,7 @@ function renderLocSiteContent(container, site) {
             <span style="font-size:11px;color:var(--text3)">${stats.inv}/${stats.total}</span>
             <i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i>
           </div>
-          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
+          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier ce bureau"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
         </div>`;
       });
       html += `</div>`;
@@ -1969,7 +1983,104 @@ function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { con
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
 function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
-function openSuiviPanel() { if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; } if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } const sites = Object.keys(HIER).sort(); const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length; const totInv = Object.keys(updates).length; const totPct = totAll ? Math.round(totInv / totAll * 100) : 0; const rows = sites.map(site => { const allItems = [...DB, ...newItems].filter(r => r.site === site && !r._newLoc); const inv = allItems.filter(r => updates[r.cbi]).length; const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0; const st = siteStatuts[site] || { statut: 'NON OUVERT' }; const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)'; const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no'; const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join(''); return `<div class="site-card"><div class="statut-dot ${dotCls}"></div><div style="flex:1"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div><div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div><div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}</div><div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div></div>`; }).join(''); showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2><div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div></div><div class="modal-body"><div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:20px;font-weight:700">${totPct}%</div></div><div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div><div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div></div><div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:12px"><span><span class="statut-dot dot-no" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Non ouvert</span><span><span class="statut-dot dot-ec" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>En cours</span><span><span class="statut-dot dot-ok" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Terminé</span></div>${rows}<div style="margin-top:14px;padding-top:14px;border-top:0.5px solid var(--border)"><button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button></div></div>`); }
+let suiviFilter = 'all'; // all | en_cours | non_ouvert | termine
+
+function setSuiviFilter(f) {
+  suiviFilter = f;
+  openSuiviPanel();
+}
+
+function openSuiviPanel() {
+  if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; }
+  if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
+  const sites = Object.keys(HIER).sort();
+  const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length;
+  const totInv = Object.keys(updates).length;
+  const totPct = totAll ? Math.round(totInv / totAll * 100) : 0;
+
+  // Construire les données des sites
+  const siteData = sites.map(site => {
+    const allItems = getItemsAt(site, null, null, null);
+    const inv = allItems.filter(r => updates[r.cbi]).length;
+    const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0;
+    const st = siteStatuts[site] || { statut: 'NON OUVERT' };
+    return { site, allItems, inv, pct, st };
+  });
+
+  // Compter par statut pour les badges
+  const counts = {
+    all: siteData.length,
+    en_cours: siteData.filter(s => s.st.statut === 'EN COURS').length,
+    non_ouvert: siteData.filter(s => s.st.statut === 'NON OUVERT').length,
+    termine: siteData.filter(s => s.st.statut === 'TERMINE').length
+  };
+
+  // Filtrer
+  let filtered = siteData;
+  if (suiviFilter === 'en_cours') filtered = siteData.filter(s => s.st.statut === 'EN COURS');
+  else if (suiviFilter === 'non_ouvert') filtered = siteData.filter(s => s.st.statut === 'NON OUVERT');
+  else if (suiviFilter === 'termine') filtered = siteData.filter(s => s.st.statut === 'TERMINE');
+
+  const rows = filtered.map(({ site, allItems, inv, pct, st }) => {
+    const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
+    const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no';
+    const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join('');
+    return `<div class="site-card">
+      <div class="statut-dot ${dotCls}"></div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div>
+        <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div>
+        <div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>
+        ${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}
+      </div>
+      <div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div>
+    </div>`;
+  }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun site ne correspond à ce filtre</div>';
+
+  const filterBtn = (key, label, color, icon) => {
+    const active = suiviFilter === key;
+    const cnt = counts[key];
+    return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')">
+      <i class="ti ${icon}"></i> ${label} (${cnt})
+    </button>`;
+  };
+
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button>
+        <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:700">Avancement global</div>
+          <div style="font-size:20px;font-weight:700">${totPct}%</div>
+        </div>
+        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
+      </div>
+
+      <!-- Filtre par statut -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer par statut</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${filterBtn('all', 'Tous', 'var(--accent)', 'ti-layout-grid')}
+          ${filterBtn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock')}
+          ${filterBtn('non_ouvert', 'Non ouvert', '#9ca3af', 'ti-circle-dashed')}
+          ${filterBtn('termine', 'Terminé', 'var(--success-txt)', 'ti-circle-check')}
+        </div>
+      </div>
+
+      ${rows}
+
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
+      </div>
+    </div>`);
+}
 function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
 async function changeSiteStatut(site, statut) { await writeSuivi(site, statut, ''); openSuiviPanel(); renderMain(); showToast(site + ' → ' + statut, 'success'); }
 async function writeSuivi(site, statut, obs) { if (!gTok || !gsConf.sheetId) return; const now = new Date().toLocaleDateString('fr-FR'); const prev = siteStatuts[site] || {}; const dateDebut = prev.dateDebut || now; siteStatuts[site] = { statut, by: currentUser, dateDebut, dateMaj: now, obs: obs || prev.obs || '' }; saveLocal(); try { const d = await sGet(`${SH_SUIVI}!A2:A`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === site); const row = [site, statut, currentUser, dateDebut, now, obs || prev.obs || '']; if (idx >= 0) { await sPut(`${SH_SUIVI}!A${idx + 2}:F${idx + 2}`, [row]); } else { await sAppend(SH_SUIVI, [row]); } } catch(e) { console.error('Suivi write error', e); } }
@@ -1991,87 +2102,149 @@ function renderTopbarActions() { const el = document.getElementById('topbar-acti
 
 
 // ---------- MODIFIER EMPLACEMENT ----------
+// ─────────────────────────────────────────────────────────────
+//  MODIFIER EMPLACEMENT — tous niveaux (site/bat/etage/bureau)
+// ─────────────────────────────────────────────────────────────
 function openEditLocation(site, bat, etage, bureau) {
-  const items = getItemsAt(site, bat, etage, bureau);
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-edit"></i> Modifier emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">
-    <div class="item-box">
-      <div style="font-size:14px;font-weight:700;margin-bottom:4px">${bureau}</div>
-      <div style="font-size:12px;color:var(--text2)">${site} › ${bat} › ${etage}</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:6px">${items.length} article(s) dans cet emplacement</div>
+  if (!can('canEditLocation')) { showToast('Accès refusé', 'danger'); return; }
+  // Détermine le niveau : site, bat, etage, ou bureau
+  let level, oldName, items, label;
+  if (bureau) { level = 'bureau'; oldName = bureau; items = getItemsAt(site, bat, etage, bureau); label = 'bureau'; }
+  else if (etage) { level = 'etage'; oldName = etage; items = getItemsAt(site, bat, etage, null); label = 'étage'; }
+  else if (bat) { level = 'bat'; oldName = bat; items = getItemsAt(site, bat, null, null); label = 'bâtiment'; }
+  else { level = 'site'; oldName = site; items = getItemsAt(site, null, null, null); label = 'site'; }
+
+  const fullPath = [site, bat, etage, bureau].filter(Boolean).join(' › ');
+  let extraFields = '';
+  if (level === 'bureau') {
+    extraFields = `
+      <div class="form-group">
+        <label class="form-label">Déplacer vers un autre étage (optionnel)</label>
+        <select id="el-etage">
+          <option value="">— Garder l'étage actuel (${etage}) —</option>
+          ${Object.keys((HIER[site]||{})[bat]||{}).sort().filter(e=>e!==etage).map(e=>`<option value="${e}">${e}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Déplacer vers un autre bâtiment (optionnel)</label>
+        <select id="el-bat">
+          <option value="">— Garder le bâtiment actuel (${bat}) —</option>
+          ${Object.keys(HIER[site]||{}).sort().filter(b=>b!==bat).map(b=>`<option value="${b}">${b}</option>`).join('')}
+        </select>
+      </div>`;
+  } else if (level === 'etage') {
+    extraFields = `
+      <div class="form-group">
+        <label class="form-label">Déplacer vers un autre bâtiment (optionnel)</label>
+        <select id="el-bat">
+          <option value="">— Garder le bâtiment actuel (${bat}) —</option>
+          ${Object.keys(HIER[site]||{}).sort().filter(b=>b!==bat).map(b=>`<option value="${b}">${b}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+
+  const cascadeWarn = level !== 'bureau'
+    ? `<div class="alert alert-warn" style="margin-top:10px"><i class="ti ti-alert-triangle"></i><div>La modification de ce ${label} mettra à jour <strong>tous les articles</strong> et sous-emplacements rattachés (${items.length} article(s)).</div></div>`
+    : '';
+
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-edit"></i> Modifier ${label}</h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
-    <div class="form-group">
-      <label class="form-label">Nouveau nom du bureau</label>
-      <input type="text" id="el-bureau" value="${bureau}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Déplacer vers un autre étage (optionnel)</label>
-      <select id="el-etage">
-        <option value="">-- Garder l'étage actuel (${etage}) --</option>
-        ${Object.keys((HIER[site]||{})[bat]||{}).sort().filter(e=>e!==etage).map(e=>`<option value="${e}">${e}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Déplacer vers un autre bâtiment (optionnel)</label>
-      <select id="el-bat">
-        <option value="">-- Garder le bâtiment actuel (${bat}) --</option>
-        ${Object.keys(HIER[site]||{}).sort().filter(b=>b!==bat).map(b=>`<option value="${b}">${b}</option>`).join('')}
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeModal()">Annuler</button>
-      <button class="btn btn-primary" onclick="saveEditLocation('${site}','${bat}','${etage}','${bureau}')"><i class="ti ti-check"></i> Enregistrer</button>
-    </div></div>`);
+    <div class="modal-body">
+      <div class="item-box">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${label}</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">${oldName}</div>
+        <div style="font-size:12px;color:var(--text2)">${fullPath}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px">${items.length} article(s) concerné(s)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nouveau nom du ${label} *</label>
+        <input type="text" id="el-name" value="${oldName}">
+      </div>
+      ${extraFields}
+      ${cascadeWarn}
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn btn-primary" data-level="${level}" data-site="${site||''}" data-bat="${bat||''}" data-etage="${etage||''}" data-bureau="${bureau||''}" onclick="saveEditLocation(this)"><i class="ti ti-check"></i> Enregistrer</button>
+      </div>
+    </div>`);
 }
 
-async function saveEditLocation(oldSite, oldBat, oldEtage, oldBureau) {
-  const newBureau = document.getElementById('el-bureau').value.trim();
-  const newEtage = document.getElementById('el-etage').value || oldEtage;
-  const newBat = document.getElementById('el-bat').value || oldBat;
-  if (!newBureau) { showToast('Le nom du bureau est requis', 'warn'); return; }
-  
-  const moved = (newBureau !== oldBureau || newEtage !== oldEtage || newBat !== oldBat);
-  
-  // Mettre à jour les articles dans DB et newItems
-  [...DB, ...newItems].forEach(r => {
-    if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau) {
-      r.bureau = newBureau;
-      r.etage = newEtage;
-      r.bat = newBat;
+async function saveEditLocation(btn) {
+  const level = btn.dataset.level;
+  const oldSite = btn.dataset.site, oldBat = btn.dataset.bat, oldEtage = btn.dataset.etage, oldBureau = btn.dataset.bureau;
+  const newName = document.getElementById('el-name').value.trim();
+  if (!newName) { showToast('Le nom est requis', 'warn'); return; }
+
+  let newSite = oldSite, newBat = oldBat, newEtage = oldEtage, newBureau = oldBureau;
+
+  if (level === 'site') {
+    newSite = newName;
+  } else if (level === 'bat') {
+    newBat = newName;
+  } else if (level === 'etage') {
+    newEtage = newName;
+    const batSel = document.getElementById('el-bat');
+    if (batSel && batSel.value) newBat = batSel.value;
+  } else { // bureau
+    newBureau = newName;
+    const etageSel = document.getElementById('el-etage');
+    const batSel = document.getElementById('el-bat');
+    if (etageSel && etageSel.value) newEtage = etageSel.value;
+    if (batSel && batSel.value) newBat = batSel.value;
+  }
+
+  // Mettre à jour tous les articles concernés
+  let count = 0;
+  const all = [...DB, ...newItems];
+  for (let i = 0; i < all.length; i++) {
+    const r = all[i];
+    let matches = false;
+    if (level === 'site') matches = (r.site === oldSite);
+    else if (level === 'bat') matches = (r.site === oldSite && r.bat === oldBat);
+    else if (level === 'etage') matches = (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage);
+    else matches = (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau);
+
+    if (matches) {
+      if (level === 'site') r.site = newSite;
+      else if (level === 'bat') r.bat = newBat;
+      else if (level === 'etage') { r.etage = newEtage; r.bat = newBat; }
+      else { r.bureau = newBureau; r.etage = newEtage; r.bat = newBat; }
+      count++;
     }
-  });
-  
-  // Mettre à jour la hiérarchie
-  if (HIER[oldSite] && HIER[oldSite][oldBat] && HIER[oldSite][oldBat][oldEtage]) {
-    const idx = HIER[oldSite][oldBat][oldEtage].indexOf(oldBureau);
-    if (idx >= 0) HIER[oldSite][oldBat][oldEtage].splice(idx, 1);
   }
-  if (!HIER[oldSite][newBat]) HIER[oldSite][newBat] = {};
-  if (!HIER[oldSite][newBat][newEtage]) HIER[oldSite][newBat][newEtage] = [];
-  if (!HIER[oldSite][newBat][newEtage].includes(newBureau)) {
-    HIER[oldSite][newBat][newEtage].push(newBureau);
-    HIER[oldSite][newBat][newEtage].sort();
-  }
-  
-  // Enregistrer le changement dans Google Sheets
+
+  // Enregistrer dans Google Sheets
   if (gTok) {
     try {
-      await sAppend(SH_LOC, [[oldSite, newBat, newEtage, newBureau, '', 'MODIFIE (ex: ' + oldBureau + ')', currentUser, new Date().toISOString()]]);
+      const obs = level === 'site' ? `SITE renommé: ${oldSite} → ${newSite}`
+        : level === 'bat' ? `BATIMENT renommé: ${oldBat} → ${newBat}`
+        : level === 'etage' ? `ETAGE renommé: ${oldEtage} → ${newEtage}${newBat !== oldBat ? ' (vers ' + newBat + ')' : ''}`
+        : `BUREAU renommé: ${oldBureau} → ${newBureau}${newBat !== oldBat || newEtage !== oldEtage ? ' (vers ' + newBat + '›' + newEtage + ')' : ''}`;
+      await sAppend(SH_LOC, [[newSite, newBat, newEtage, newBureau, '', obs, currentUser, new Date().toISOString()]]);
     } catch(e) {}
   }
-  
+
   saveLocal();
   closeModal();
   buildHier();
-  
+  invalidateStatsCache();
+
   // Si on est dans la vue inventaire avec cet emplacement, naviguer vers le nouveau
-  if (curLoc.site === oldSite && curLoc.bat === oldBat && curLoc.etage === oldEtage && curLoc.bureau === oldBureau) {
-    navigateTo(oldSite, newBat, newEtage, newBureau);
+  if (curLoc.site === oldSite && (level === 'site' || curLoc.bat === oldBat) && (level === 'site' || level === 'bat' || curLoc.etage === oldEtage) && (level !== 'bureau' || curLoc.bureau === oldBureau)) {
+    if (level === 'site') navigateTo(newSite, curLoc.bat, curLoc.etage, curLoc.bureau);
+    else if (level === 'bat') navigateTo(curLoc.site, newBat, curLoc.etage, curLoc.bureau);
+    else if (level === 'etage') navigateTo(curLoc.site, newBat, newEtage, curLoc.bureau);
+    else navigateTo(newSite, newBat, newEtage, newBureau);
   }
-  
+
   if (currentView === 'locations') renderLocationsView();
   else renderMain();
   renderDataStatus();
-  showToast(moved ? `Bureau déplacé vers ${newBat} › ${newEtage} › ${newBureau}` : `Bureau renommé en "${newBureau}"`, 'success');
+  const labelMap = { site: 'Site', bat: 'Bâtiment', etage: 'Étage', bureau: 'Bureau' };
+  showToast(`${labelMap[level]} modifié — ${count} article(s) impacté(s)`, 'success');
 }
 
 // ---------- OPEN ADD LOCATION ----------
