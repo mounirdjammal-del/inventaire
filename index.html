@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 6.2 -->
+<!-- VERSION 7.0 (Relationnel) -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -402,12 +402,8 @@ function can(permission) { return !!(PERMISSIONS[currentRole] || PERMISSIONS.use
 const ES = ['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
 const ER = ['BON','MOYEN','VETUSTE'];
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
-const SH_DATA = 'Inventaire', SH_UPD = 'Updates', SH_NEW = 'NouveauxArticles', SH_LOC = 'NouveauxEmplacements', SH_SUIVI = 'SuiviInventaire', SH_EXPORT = 'ExportFinal';
+const SH_EXPORT = 'ExportFinal';
 const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
-const H_UPD = ['CBI','SERV','RENOUV','OBS','BY','TS','PHOTOS','TROUVE','SITE','BATIMENT','ETAGE','BUREAU'];
-const H_NEW = ['CBI','CBE','SITE','BAT','ETAGE','BUREAU','FAM','ART','QTY','SERV','RENOUV','OBS','MARQUE','MODELE','SERIE','BY','TS'];
-const H_LOC = ['SITE','BAT','ETAGE','BUREAU','CBE','TYPE','BY','TS'];
-const H_SUIVI = ['SITE','STATUT','INVENTORISTE','DATE_DEBUT','DATE_MAJ','OBSERVATIONS'];
 const H_EXPORT = ['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT INVENTAIRE','NOUVEAU ARTICLE','PHOTOS'];
 const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
 
@@ -416,6 +412,8 @@ let DB = [], HIER = {}, FAMS = {};
 let LOC_INDEX = {}; // cache: 'site|bat|etage|bureau' -> [items]
 let CBI_INDEX = {}; // cache: cbi -> item (lookup O(1))
 let CBE_INDEX = {}; // cache: cbe -> item
+// Index relationnels (chargés depuis les tables référentielles)
+let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
@@ -644,102 +642,249 @@ async function ensureSheets() {
   if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
   const meta = await r.json();
   const exist = meta.sheets.map(s => s.properties.title);
-  const needed = [SH_UPD, SH_NEW, SH_LOC, SH_SUIVI, SH_EXPORT].filter(s => !exist.includes(s));
-  if (!needed.length) return;
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
-  const hMap = { [SH_UPD]: H_UPD, [SH_NEW]: H_NEW, [SH_LOC]: H_LOC, [SH_SUIVI]: H_SUIVI, [SH_EXPORT]: H_EXPORT };
-  for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
+  const needed = ['Updates', 'NouveauxArticles', 'SuiviSites'].filter(s => !exist.includes(s));
+  if (needed.length) {
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
+    const hMap = {
+      'Updates': ['cbi','emp_id','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts'],
+      'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
+      'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le']
+    };
+    for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
+  }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  CHARGEMENT RELATIONNEL — joint les 6 tables en mémoire
+// ─────────────────────────────────────────────────────────────
 async function pullAll() {
-  await pullUpdates(); await pullNewItems(); await pullLocs(); await pullSuivi(); saveLocal();
-}
-async function pullUpdates() {
+  if (!gTok) return;
   try {
-    const d = await sGet(`${SH_UPD}!A2:L`);
-    for (const row of (d.values || [])) {
-      const [cbi, serv, renouv, obs, by, ts, photosCol, trouve, site, bat, etage, bureau] = row;
+    // Charger tous les référentiels en parallèle
+    const [sitesData, batsData, empsData, famsData, artsData, invData, updData, niData, suiviData] = await Promise.all([
+      sGet('Sites!A2:C'),
+      sGet('Batiments!A2:G'),
+      sGet('Emplacements!A2:G'),
+      sGet('Familles!A2:B'),
+      sGet('Articles!A2:C'),
+      sGet('Inventaire!A2:L'),
+      sGet('Updates!A2:I'),
+      sGet('NouveauxArticles!A2:M'),
+      sGet('SuiviSites!A2:H')
+    ]);
+
+    // Construire les index par ID
+    REL_SITES = {}; REL_BATS = {}; REL_EMPS = {}; REL_FAMS = {}; REL_ARTS = {};
+
+    for (const r of (sitesData.values || [])) {
+      if (!r[0]) continue;
+      REL_SITES[r[0]] = { site_id: r[0], site_code: r[1] || '', commune: r[2] || '' };
+    }
+    for (const r of (batsData.values || [])) {
+      if (!r[0]) continue;
+      REL_BATS[r[0]] = { bat_id: r[0], bat_nom: r[1] || '', ref_batiment: r[2] || '', site_id: r[3] || '', gps: r[4] || '', type_bat: r[5] || '', direction: r[6] || '' };
+    }
+    for (const r of (empsData.values || [])) {
+      if (!r[0]) continue;
+      REL_EMPS[r[0]] = { emp_id: r[0], cbe: r[1] || '', site_id: r[2] || '', bat_id: r[3] || '', etage: r[4] || '', bureau: r[5] || '', type_empl: r[6] || '' };
+    }
+    for (const r of (famsData.values || [])) {
+      if (!r[0]) continue;
+      REL_FAMS[r[0]] = { famille_id: r[0], famille_nom: r[1] || '' };
+    }
+    for (const r of (artsData.values || [])) {
+      if (!r[0]) continue;
+      const fam = REL_FAMS[r[2]] || {};
+      REL_ARTS[r[0]] = { article_id: r[0], article_nom: r[1] || '', famille_id: r[2] || '', famille_nom: fam.famille_nom || '' };
+    }
+
+    // Construire DB[] en dénormalisant via les FK
+    DB = [];
+    for (const r of (invData.values || [])) {
+      const [cbi, article_id, emp_id, marque, modele, serie, num_amendis, quantite, etat_service, etat_renouvelabilite, observation, patrimoine] = r;
+      if (!cbi) continue;
+      const emp = REL_EMPS[emp_id] || {};
+      const bat = REL_BATS[emp.bat_id] || {};
+      const site = REL_SITES[emp.site_id] || {};
+      const art = REL_ARTS[article_id] || {};
+      DB.push({
+        cbi: String(cbi),
+        emp_id: emp_id || '',
+        article_id: article_id || '',
+        cbe: emp.cbe || '',
+        site: site.site_code || '',
+        bat: bat.bat_nom || '',
+        etage: emp.etage || '',
+        bureau: emp.bureau || '',
+        fam: art.famille_nom || '',
+        art: art.article_nom || '',
+        marque: marque || '',
+        modele: modele || '',
+        serie: String(serie || ''),
+        prod: num_amendis || '',
+        qty: parseInt(quantite) || 1,
+        serv: etat_service || 'EN SERVICE',
+        renouv: etat_renouvelabilite || 'BON',
+        obs: observation || '',
+        patrim: patrimoine || '',
+        dir: bat.direction || '',
+        nom_inv: ''
+      });
+    }
+
+    // Updates (avec emp_id potentiellement transféré)
+    updates = {};
+    for (const r of (updData.values || [])) {
+      const [cbi, emp_id, serv, renouv, obs, trouve, photosCol, by, ts] = r;
       if (!cbi) continue;
       const t = ts ? new Date(ts).getTime() : 0;
       if (!updates[cbi] || t > updates[cbi].ts) {
-        updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', by: by || '', ts: t, trouve: trouve || '' };
-        // Si un emplacement est indiqué, mettre à jour l'article
-        if (site && bureau) {
-          const item = findItemByCbi(cbi);
-          if (item && (item.site !== site || item.bat !== bat || item.etage !== etage || item.bureau !== bureau)) {
-            const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
-            if (LOC_INDEX[oldKey]) {
-              const idx = LOC_INDEX[oldKey].indexOf(item);
-              if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
+        updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', trouve: trouve || '', by: by || '', ts: t };
+        // Si l'update porte un nouvel emp_id, mettre à jour l'article (transfert)
+        if (emp_id) {
+          const item = CBI_INDEX[cbi] || DB.find(x => x.cbi === cbi);
+          if (item && item.emp_id !== emp_id) {
+            const newEmp = REL_EMPS[emp_id];
+            if (newEmp) {
+              const newBat = REL_BATS[newEmp.bat_id] || {};
+              const newSite = REL_SITES[newEmp.site_id] || {};
+              item.emp_id = emp_id;
+              item.cbe = newEmp.cbe;
+              item.site = newSite.site_code;
+              item.bat = newBat.bat_nom;
+              item.etage = newEmp.etage;
+              item.bureau = newEmp.bureau;
             }
-            item.site = site; item.bat = bat; item.etage = etage; item.bureau = bureau;
-            const newKey = site + '|' + bat + '|' + etage + '|' + bureau;
-            if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
-            if (!LOC_INDEX[newKey].includes(item)) LOC_INDEX[newKey].push(item);
           }
         }
       }
     }
-  } catch(e) {}
-}
-async function pullNewItems() {
-  try {
-    const d = await sGet(`${SH_NEW}!A2:Q`);
-    for (const row of (d.values || [])) {
-      const [cbi, cbe, site, bat, etage, bureau, fam, art, qty, serv, renouv, obs, marque, modele, serie, by, ts] = row;
-      if (!cbi || findItemByCbi(cbi)) continue;
-      newItems.push({ cbi, cbe: cbe || '', site: site || '', bat: bat || '', etage: etage || '', bureau: bureau || '', fam: fam || '', art: art || '', qty: parseInt(qty) || 1, serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', marque: marque || '', modele: modele || '', serie: serie || '', prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: by || '', _addedAt: ts ? new Date(ts).getTime() : Date.now() });
+
+    // Nouveaux articles
+    newItems = [];
+    for (const r of (niData.values || [])) {
+      const [cbi, cbe_scan, emp_id, article_id, marque, modele, serie, quantite, serv, renouv, obs, by, ts] = r;
+      if (!cbi) continue;
+      const emp = REL_EMPS[emp_id] || {};
+      const bat = REL_BATS[emp.bat_id] || {};
+      const site = REL_SITES[emp.site_id] || {};
+      const art = REL_ARTS[article_id] || {};
+      newItems.push({
+        cbi: String(cbi),
+        emp_id: emp_id || '',
+        article_id: article_id || '',
+        cbe: cbe_scan || emp.cbe || '',
+        site: site.site_code || '',
+        bat: bat.bat_nom || '',
+        etage: emp.etage || '',
+        bureau: emp.bureau || '',
+        fam: art.famille_nom || '',
+        art: art.article_nom || '',
+        marque: marque || '',
+        modele: modele || '',
+        serie: String(serie || ''),
+        prod: '', dir: '', patrim: '', nom_inv: '',
+        qty: parseInt(quantite) || 1,
+        serv: serv || 'EN SERVICE',
+        renouv: renouv || 'BON',
+        obs: obs || '',
+        _new: true,
+        _addedBy: by || '',
+        _addedAt: ts ? new Date(ts).getTime() : Date.now()
+      });
     }
-    if ([...DB, ...newItems].some(r => r._new)) buildHier();
-  } catch(e) {}
-}
-async function pullLocs() {
-  try {
-    const d = await sGet(`${SH_LOC}!A2:H`);
-    for (const row of (d.values || [])) {
-      const [site, bat, etage, bureau] = row;
-      if (!site || !bat || !etage || !bureau) continue;
-      if (!HIER[site]) HIER[site] = {};
-      if (!HIER[site][bat]) HIER[site][bat] = {};
-      if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
-      if (!HIER[site][bat][etage].includes(bureau)) { HIER[site][bat][etage].push(bureau); HIER[site][bat][etage].sort(); }
+
+    // Suivi sites (clé = site_code, pas site_id)
+    siteStatuts = {};
+    for (const r of (suiviData.values || [])) {
+      const [site_id, statut, dd, df, inv, obs, by, ts] = r;
+      if (!site_id) continue;
+      const siteCode = (REL_SITES[site_id] || {}).site_code;
+      if (siteCode) {
+        siteStatuts[siteCode] = {
+          statut: statut || 'NON OUVERT',
+          dateDebut: dd || '', dateFin: df || '',
+          inventoriste: inv || '', obs: obs || '',
+          by: by || '', dateMaj: ts || ''
+        };
+      }
     }
-    const ss = document.getElementById('sel-site');
-    if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
-  } catch(e) {}
+
+    buildHier();
+    invalidateStatsCache();
+    saveLocal();
+  } catch(e) {
+    console.error('pullAll error', e);
+  }
 }
-async function pullSuivi() {
-  try {
-    const d = await sGet(`${SH_SUIVI}!A2:F`);
-    for (const row of (d.values || [])) {
-      const [site, statut, by, dateDebut, dateMaj, obs] = row;
-      if (!site) continue;
-      siteStatuts[site] = { statut: statut || 'NON OUVERT', by: by || '', dateDebut: dateDebut || '', dateMaj: dateMaj || '', obs: obs || '' };
-    }
-  } catch(e) {}
+
+// ─────────────────────────────────────────────────────────────
+//  HELPERS RELATIONNELS
+// ─────────────────────────────────────────────────────────────
+function findEmpIdByLocation(site_code, bat_nom, etage, bureau) {
+  for (const eid in REL_EMPS) {
+    const e = REL_EMPS[eid];
+    const sCode = (REL_SITES[e.site_id] || {}).site_code;
+    const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
+    if (sCode === site_code && bNom === bat_nom && e.etage === etage && e.bureau === bureau) return eid;
+  }
+  return null;
 }
+function findArticleIdByName(article_nom) {
+  for (const aid in REL_ARTS) {
+    if (REL_ARTS[aid].article_nom === article_nom) return aid;
+  }
+  return null;
+}
+function findSiteIdByCode(site_code) {
+  for (const sid in REL_SITES) {
+    if (REL_SITES[sid].site_code === site_code) return sid;
+  }
+  return null;
+}
+
 async function writeUpd(cbi, u) {
-  // Trouver l'emplacement actuel de l'article
   const item = findItemByCbi(cbi) || {};
-  const loc = { site: item.site || '', bat: item.bat || '', etage: item.etage || '', bureau: item.bureau || '' };
-  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); return; }
-  try { await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '', loc.site, loc.bat, loc.etage, loc.bureau]]); } catch(e) { pendingWrites.push({ type: 'u', d: { cbi, ...u, ...loc } }); }
+  const emp_id = item.emp_id || '';
+  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, ...u } }); return; }
+  try {
+    await sAppend('Updates', [[cbi, emp_id, u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()]]);
+  } catch(e) {
+    pendingWrites.push({ type: 'u', d: { cbi, emp_id, ...u } });
+  }
 }
 async function writeNI(item) {
   if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); return; }
-  try { await sAppend(SH_NEW, [[item.cbi, item.cbe, item.site, item.bat, item.etage, item.bureau, item.fam, item.art, item.qty, item.serv, item.renouv, item.obs || '', item.marque || '', item.modele || '', item.serie || '', item._addedBy, new Date(item._addedAt).toISOString()]]); } catch(e) { pendingWrites.push({ type: 'ni', d: item }); }
+  try {
+    await sAppend('NouveauxArticles', [[item.cbi, item.cbe || '', item.emp_id || '', item.article_id || '', item.marque || '', item.modele || '', item.serie || '', item.qty, item.serv, item.renouv, item.obs || '', item._addedBy, new Date(item._addedAt).toISOString()]]);
+  } catch(e) {
+    pendingWrites.push({ type: 'ni', d: item });
+  }
 }
-async function writeNL(loc) {
-  if (!gTok) { pendingWrites.push({ type: 'nl', d: loc }); return; }
-  try { await sAppend(SH_LOC, [[loc.site, loc.bat, loc.etage, loc.bureau, loc.cbe || '', loc.type || '', loc._addedBy, new Date(loc._addedAt).toISOString()]]); } catch(e) { pendingWrites.push({ type: 'nl', d: loc }); }
+async function writeSuivi(site_code, statut) {
+  if (!gTok) return;
+  const site_id = findSiteIdByCode(site_code);
+  if (!site_id) return;
+  // Chercher la ligne existante
+  try {
+    const d = await sGet('SuiviSites!A2:A');
+    const rows = d.values || [];
+    const idx = rows.findIndex(r => r[0] === site_id);
+    const ts = new Date().toISOString();
+    const newRow = [site_id, statut, '', '', currentUser, '', currentUser, ts];
+    if (idx >= 0) {
+      await sPut(`SuiviSites!A${idx + 2}:H${idx + 2}`, [newRow]);
+    } else {
+      await sAppend('SuiviSites', [newRow]);
+    }
+  } catch(e) { console.error('writeSuivi', e); }
 }
 async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
-  const nl = pendingWrites.filter(p => p.type === 'nl');
-  if (upd.length) await sAppend(SH_UPD, upd.map(p => { const u = p.d; return [u.cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), '', u.trouve || '', u.site || '', u.bat || '', u.etage || '', u.bureau || '']; }));
-  if (ni.length) await sAppend(SH_NEW, ni.map(p => { const r = p.d; return [r.cbi, r.cbe, r.site, r.bat, r.etage, r.bureau, r.fam, r.art, r.qty, r.serv, r.renouv, r.obs || '', r.marque || '', r.modele || '', r.serie || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
-  if (nl.length) await sAppend(SH_LOC, nl.map(p => { const r = p.d; return [r.site, r.bat, r.etage, r.bureau, r.cbe || '', r.type || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+  if (upd.length) await sAppend('Updates', upd.map(p => { const u = p.d; return [u.cbi, u.emp_id || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()]; }));
+  if (ni.length) await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
   pendingWrites = [];
 }
 
@@ -750,28 +895,13 @@ async function loadFromSheets() {
   setSyncing(true, 'Chargement…');
   try {
     await ensureSheets();
-    const data = await sGet(`${SH_DATA}!A1:AH`);
-    const rows = data.values || [];
-    if (rows.length < 2) { showToast('Feuille "Inventaire" vide', 'warn'); setSyncing(false); return; }
-    const hdrs = rows[0];
-    const ix = h => hdrs.indexOf(h);
-    DB = rows.slice(1).map(row => ({
-      site: row[ix('SITE')] || '', bat: row[ix('BATIMENT')] || '', etage: row[ix('ETAGE')] || '', bureau: row[ix('BUREAU')] || '',
-      cbe: String(row[ix('CODE BARRE EMP')] || ''), cbi: String(row[ix('CODE BARRE IMMO')] || ''),
-      fam: row[ix('FAMILLE ARTICLE')] || '', art: row[ix('ARTICLE')] || '', qty: parseInt(row[ix('QUANTITE')]) || 1,
-      renouv: row[ix('ETAT DE RENOUVELABILITE')] || 'BON', serv: row[ix('ETAT DE SERVICE')] || 'EN SERVICE',
-      obs: row[ix('OBSERVATION')] || '', serie: row[ix('NUMERO DE SERIE')] || '', modele: row[ix('MODELE')] || '',
-      marque: row[ix('MARQUE')] || '', dir: row[ix('DIRECTION')] || row[ix('DIRECTION ')] || '',
-      patrim: row[ix('PATRIMOINE')] || '', nom_inv: row[ix('NOM INVENTORISTE')] || '', prod: ''
-    })).filter(r => r.cbi);
-    buildHier();
     await pullAll();
     renderDataStatus();
     renderMain();
     showToast(DB.length.toLocaleString('fr-FR') + ' articles chargés', 'success');
     startAutoSync();
-    goView('home');
-  } catch(err) { showToast('Erreur: ' + err.message, 'danger'); }
+    goView('inventory');
+  } catch(err) { showToast('Erreur: ' + err.message, 'danger'); console.error(err); }
   setSyncing(false);
 }
 async function syncNow() {
@@ -1771,9 +1901,13 @@ function openTransferModal(item) {
 async function confirmTransferAndUpdate(cbi) {
   const item = findItemByCbi(cbi);
   if (!item || !curLoc.bureau) return;
-  
+
+  // Trouver l'emp_id du nouvel emplacement
+  const newEmpId = findEmpIdByLocation(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
+  if (!newEmpId) { showToast('Emplacement introuvable dans le référentiel', 'danger'); return; }
+
   const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
-  
+
   // 1. Récupérer les valeurs du formulaire
   const trouveEl = document.querySelector('input[name="t-trouve"]:checked');
   const u = {
@@ -1784,39 +1918,42 @@ async function confirmTransferAndUpdate(cbi) {
     by: currentUser,
     ts: Date.now()
   };
-  
+
   // Ajouter la mention du transfert dans l'observation
   const transferNote = 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
   u.obs = u.obs ? u.obs + ' | ' + transferNote : transferNote;
-  
+
   // 2. Retirer l'article de l'ancien index
   const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
   if (LOC_INDEX[oldKey]) {
     const idx = LOC_INDEX[oldKey].indexOf(item);
     if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
   }
-  
-  // 3. Déplacer l'article vers le nouveau bureau
+
+  // 3. Déplacer l'article vers le nouveau bureau (mettre à jour emp_id ET dénormalisé)
+  const newEmp = REL_EMPS[newEmpId];
+  item.emp_id = newEmpId;
+  item.cbe = newEmp.cbe || item.cbe;
   item.site = curLoc.site;
   item.bat = curLoc.bat;
   item.etage = curLoc.etage;
   item.bureau = curLoc.bureau;
-  
+
   // 4. Ajouter au nouvel index
   const newKey = curLoc.site + '|' + curLoc.bat + '|' + curLoc.etage + '|' + curLoc.bureau;
   if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
   LOC_INDEX[newKey].push(item);
-  
+
   // 5. Mettre à jour l'état
   updates[cbi] = u;
-  
-  // 6. Écrire dans Google Sheets
+
+  // 6. Écrire dans Google Sheets (avec emp_id)
   if (gTok) {
     try {
-      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs, u.by, new Date(u.ts).toISOString(), '', u.trouve, curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau]]);
+      await sAppend('Updates', [[cbi, newEmpId, u.serv, u.renouv, u.obs, u.trouve, '', u.by, new Date(u.ts).toISOString()]]);
     } catch(e) { console.error('Transfer write error', e); }
   }
-  
+
   invalidateStatsCache();
   saveLocal();
   closeModal();
@@ -1878,6 +2015,9 @@ async function saveUpd(cbi) {
   const locSel = document.getElementById('e-loc');
   if (locSel && locSel.value !== locSel.dataset.original) {
     const [newSite, newBat, newEtage, newBureau] = locSel.value.split('|');
+    const newEmpId = findEmpIdByLocation(newSite, newBat, newEtage, newBureau);
+    if (!newEmpId) { showToast('Emplacement introuvable', 'danger'); return; }
+
     const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
     // Retirer de l'ancien index
     const oldKey = item.site + '|' + item.bat + '|' + item.etage + '|' + item.bureau;
@@ -1885,7 +2025,10 @@ async function saveUpd(cbi) {
       const idx = LOC_INDEX[oldKey].indexOf(item);
       if (idx >= 0) LOC_INDEX[oldKey].splice(idx, 1);
     }
-    // Mettre à jour l'article
+    // Mettre à jour l'article (emp_id + dénormalisé)
+    const newEmp = REL_EMPS[newEmpId];
+    item.emp_id = newEmpId;
+    item.cbe = newEmp.cbe || item.cbe;
     item.site = newSite; item.bat = newBat; item.etage = newEtage; item.bureau = newBureau;
     // Ajouter au nouvel index
     const newKey = locSel.value;
@@ -1925,7 +2068,26 @@ async function saveNew() {
   const existCbi = findItemByCbi(cbi);
   if (existCbi) { showDoublonModal('cbi', existCbi); return; }
   if (cbe) { const existCbe = findItemByCbe(cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
-  const item = { ...curLoc, cbi, cbe, fam: document.getElementById('n-fam').value, art: document.getElementById('n-art').value, marque: document.getElementById('n-marque').value, modele: document.getElementById('n-modele').value, serie: document.getElementById('n-serie').value, qty: parseInt(document.getElementById('n-qty').value) || 1, serv: document.getElementById('n-sv').value, renouv: document.getElementById('n-rv').value, obs: document.getElementById('n-obs').value, prod: '', dir: '', patrim: '', nom_inv: '', _new: true, _addedBy: currentUser, _addedAt: Date.now() };
+
+  // Trouver emp_id et article_id depuis le référentiel
+  const emp_id = curLoc.bureau ? findEmpIdByLocation(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau) : '';
+  const article_id = findArticleIdByName(document.getElementById('n-art').value) || '';
+
+  const item = {
+    ...curLoc, cbi, cbe,
+    emp_id, article_id,
+    fam: document.getElementById('n-fam').value,
+    art: document.getElementById('n-art').value,
+    marque: document.getElementById('n-marque').value,
+    modele: document.getElementById('n-modele').value,
+    serie: document.getElementById('n-serie').value,
+    qty: parseInt(document.getElementById('n-qty').value) || 1,
+    serv: document.getElementById('n-sv').value,
+    renouv: document.getElementById('n-rv').value,
+    obs: document.getElementById('n-obs').value,
+    prod: '', dir: '', patrim: '', nom_inv: '',
+    _new: true, _addedBy: currentUser, _addedAt: Date.now()
+  };
   newItems.push(item);
   updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
   // Mettre à jour les index
@@ -1965,14 +2127,14 @@ async function updatePhotosInSheet(cbi) {
   const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n');
   const item = findItemByCbi(cbi) || {};
   try {
-    const d = await sGet(`${SH_UPD}!A2:G`);
+    const d = await sGet('Updates!A2:G');
     const rows = d.values || [];
     const idx = rows.findIndex(r => r[0] === cbi);
     if (idx >= 0) {
-      await sPut(`${SH_UPD}!G${idx + 2}`, [[links]]);
+      await sPut(`Updates!G${idx + 2}`, [[links]]);
     } else {
       const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() };
-      await sAppend(SH_UPD, [[cbi, u.serv, u.renouv, u.obs || '', u.by, new Date(u.ts).toISOString(), links, u.trouve || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '']]);
+      await sAppend('Updates', [[cbi, item.emp_id || '', u.serv, u.renouv, u.obs || '', u.trouve || '', links, u.by, new Date(u.ts).toISOString()]]);
     }
   } catch(e) { console.error('Photo sheet update error', e); }
 }
@@ -1984,88 +2146,255 @@ function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.fil
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
 function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
 let suiviFilter = 'all'; // all | en_cours | non_ouvert | termine
+let suiviDrillSite = null; // null = vue sites, sinon code du site
 
 function setSuiviFilter(f) {
   suiviFilter = f;
   openSuiviPanel();
 }
+function suiviDrillTo(site) {
+  suiviDrillSite = site;
+  suiviFilter = 'all';
+  openSuiviPanel();
+}
+function suiviBackToSites() {
+  suiviDrillSite = null;
+  suiviFilter = 'all';
+  openSuiviPanel();
+}
+
+// Statut d'un bureau calculé d'après son % d'inventaire
+function getBureauStatut(site, bat, etage, bureau) {
+  const stats = getStatsFor(site, bat, etage, bureau);
+  if (!stats.total) return 'VIDE';
+  if (stats.pct === 100) return 'TERMINE';
+  if (stats.pct > 0) return 'EN COURS';
+  return 'NON OUVERT';
+}
+function getBureauLastInfo(site, bat, etage, bureau) {
+  const items = LOC_INDEX[site + '|' + bat + '|' + etage + '|' + bureau] || [];
+  let lastTs = 0, lastBy = '';
+  for (const r of items) {
+    const u = updates[r.cbi];
+    if (u && u.ts > lastTs) { lastTs = u.ts; lastBy = u.by || ''; }
+  }
+  return { lastTs, lastBy };
+}
 
 function openSuiviPanel() {
   if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; }
   if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
-  const sites = Object.keys(HIER).sort();
-  const totAll = [...DB, ...newItems].filter(r => !r._newLoc).length;
+
+  const totAll = [...DB, ...newItems].length;
   const totInv = Object.keys(updates).length;
   const totPct = totAll ? Math.round(totInv / totAll * 100) : 0;
 
-  // Construire les données des sites
-  const siteData = sites.map(site => {
-    const allItems = getItemsAt(site, null, null, null);
-    const inv = allItems.filter(r => updates[r.cbi]).length;
-    const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0;
-    const st = siteStatuts[site] || { statut: 'NON OUVERT' };
-    return { site, allItems, inv, pct, st };
-  });
+  // ═══════════════════════════════════════════════════════
+  // VUE 1 : LISTE DES SITES (vue par défaut)
+  // ═══════════════════════════════════════════════════════
+  if (!suiviDrillSite) {
+    const sites = Object.keys(HIER).sort();
+    const siteData = sites.map(site => {
+      const allItems = getItemsAt(site, null, null, null);
+      const inv = allItems.filter(r => updates[r.cbi]).length;
+      const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0;
+      const st = siteStatuts[site] || { statut: 'NON OUVERT' };
+      return { site, allItems, inv, pct, st };
+    });
 
-  // Compter par statut pour les badges
+    const counts = {
+      all: siteData.length,
+      en_cours: siteData.filter(s => s.st.statut === 'EN COURS').length,
+      non_ouvert: siteData.filter(s => s.st.statut === 'NON OUVERT').length,
+      termine: siteData.filter(s => s.st.statut === 'TERMINE').length
+    };
+
+    let filtered = siteData;
+    if (suiviFilter !== 'all') {
+      const statutTarget = suiviFilter === 'en_cours' ? 'EN COURS' : suiviFilter === 'non_ouvert' ? 'NON OUVERT' : 'TERMINE';
+      filtered = siteData.filter(s => s.st.statut === statutTarget);
+    }
+
+    const rows = filtered.map(({ site, allItems, inv, pct, st }) => {
+      const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
+      const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no';
+      const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join('');
+      return `<div class="site-card" style="cursor:pointer" onclick="if(event.target.tagName!=='SELECT'&&event.target.tagName!=='OPTION')suiviDrillTo('${site}')">
+        <div class="statut-dot ${dotCls}"></div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="font-size:15px;font-weight:700">${site}</div>
+            <i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);margin-left:auto"></i>
+          </div>
+          <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés · <strong>${pct}%</strong></div>
+          <div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>
+          ${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}
+        </div>
+        <div class="site-statut" onclick="event.stopPropagation()"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div>
+      </div>`;
+    }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun site ne correspond à ce filtre</div>';
+
+    const filterBtn = (key, label, color, icon) => {
+      const active = suiviFilter === key;
+      const cnt = counts[key];
+      return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} (${cnt})</button>`;
+    };
+
+    showModal(`<div class="modal-drag"></div>
+      <div class="modal-head">
+        <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button>
+          <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:14px;font-weight:700">Avancement global</div>
+            <div style="font-size:20px;font-weight:700">${totPct}%</div>
+          </div>
+          <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer par statut</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${filterBtn('all', 'Tous', 'var(--accent)', 'ti-layout-grid')}
+            ${filterBtn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock')}
+            ${filterBtn('non_ouvert', 'Non ouvert', '#9ca3af', 'ti-circle-dashed')}
+            ${filterBtn('termine', 'Terminé', 'var(--success-txt)', 'ti-circle-check')}
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px"><i class="ti ti-info-circle"></i> Cliquez sur un site pour voir le détail par bureau</div>
+        ${rows}
+
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
+        </div>
+      </div>`);
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // VUE 2 : DÉTAIL PAR BUREAU (drill-down sur un site)
+  // ═══════════════════════════════════════════════════════
+  const site = suiviDrillSite;
+  if (!HIER[site]) { suiviBackToSites(); return; }
+
+  // Construire la liste de tous les bureaux du site
+  const bureauData = [];
+  for (const bat of Object.keys(HIER[site]).sort()) {
+    for (const etage of Object.keys(HIER[site][bat]).sort()) {
+      for (const bureau of HIER[site][bat][etage]) {
+        const stats = getStatsFor(site, bat, etage, bureau);
+        const statut = getBureauStatut(site, bat, etage, bureau);
+        const info = getBureauLastInfo(site, bat, etage, bureau);
+        bureauData.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
+      }
+    }
+  }
+
   const counts = {
-    all: siteData.length,
-    en_cours: siteData.filter(s => s.st.statut === 'EN COURS').length,
-    non_ouvert: siteData.filter(s => s.st.statut === 'NON OUVERT').length,
-    termine: siteData.filter(s => s.st.statut === 'TERMINE').length
+    all: bureauData.length,
+    en_cours: bureauData.filter(b => b.statut === 'EN COURS').length,
+    non_ouvert: bureauData.filter(b => b.statut === 'NON OUVERT').length,
+    termine: bureauData.filter(b => b.statut === 'TERMINE').length
   };
 
-  // Filtrer
-  let filtered = siteData;
-  if (suiviFilter === 'en_cours') filtered = siteData.filter(s => s.st.statut === 'EN COURS');
-  else if (suiviFilter === 'non_ouvert') filtered = siteData.filter(s => s.st.statut === 'NON OUVERT');
-  else if (suiviFilter === 'termine') filtered = siteData.filter(s => s.st.statut === 'TERMINE');
+  // Filtrer selon le filtre actif
+  let filtered = bureauData;
+  if (suiviFilter === 'en_cours') filtered = bureauData.filter(b => b.statut === 'EN COURS');
+  else if (suiviFilter === 'non_ouvert') filtered = bureauData.filter(b => b.statut === 'NON OUVERT');
+  else if (suiviFilter === 'termine') filtered = bureauData.filter(b => b.statut === 'TERMINE');
 
-  const rows = filtered.map(({ site, allItems, inv, pct, st }) => {
-    const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-    const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no';
-    const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join('');
-    return `<div class="site-card">
-      <div class="statut-dot ${dotCls}"></div>
-      <div style="flex:1">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${site}</div>
-        <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés</div>
-        <div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>
-        ${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}
+  // Trier : EN COURS en premier (plus utile), puis par % décroissant
+  filtered.sort((a, b) => {
+    const order = { 'EN COURS': 0, 'NON OUVERT': 1, 'TERMINE': 2 };
+    if (order[a.statut] !== order[b.statut]) return order[a.statut] - order[b.statut];
+    if (a.statut === 'EN COURS') return b.lastTs - a.lastTs; // En cours: plus récent en premier
+    return b.stats.pct - a.stats.pct;
+  });
+
+  // Stats globales du site
+  const siteAll = getItemsAt(site, null, null, null);
+  const siteInv = siteAll.filter(r => updates[r.cbi]).length;
+  const sitePct = siteAll.length ? Math.round(siteInv / siteAll.length * 100) : 0;
+
+  // Grouper par bâtiment
+  const groupedHTML = (() => {
+    if (!filtered.length) {
+      return '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun bureau ne correspond à ce filtre</div>';
+    }
+    // Si filtre actif, ne pas grouper par bâtiment, juste lister
+    if (suiviFilter !== 'all') {
+      return filtered.map(b => bureauCard(b)).join('');
+    }
+    // Sinon grouper par bâtiment+étage
+    const byBat = {};
+    for (const b of filtered) {
+      const key = b.bat + ' › ' + b.etage;
+      if (!byBat[key]) byBat[key] = [];
+      byBat[key].push(b);
+    }
+    return Object.keys(byBat).sort().map(key => `
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em">${key}</div>
+      ${byBat[key].map(b => bureauCard(b)).join('')}
+    `).join('');
+  })();
+
+  function bureauCard(b) {
+    const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
+    const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
+    const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${b.bureau}</div>
+          <div style="font-size:11px;color:var(--text3)">${b.etage}</div>
+        </div>
+        <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${b.statut}</span>
+        <div style="text-align:right">
+          <div style="font-size:16px;font-weight:800;color:${pctColor}">${b.stats.pct}%</div>
+          <div style="font-size:10px;color:var(--text3)">${b.stats.inv}/${b.stats.total}</div>
+        </div>
       </div>
-      <div class="site-statut"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div>
+      <div class="pbar" style="height:6px;border-radius:3px;margin-bottom:8px"><div class="pbar-fill" style="width:${b.stats.pct}%;border-radius:3px;background:${pctColor}"></div></div>
+      ${b.lastBy ? `<div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${b.lastBy}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn btn-sm btn-primary" style="flex:1;font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="closeModal();setTimeout(()=>resumeInventory(this),100)"><i class="ti ti-clipboard-check" style="font-size:12px"></i> Inventaire</button>
+      </div>
     </div>`;
-  }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun site ne correspond à ce filtre</div>';
+  }
 
   const filterBtn = (key, label, color, icon) => {
     const active = suiviFilter === key;
     const cnt = counts[key];
-    return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')">
-      <i class="ti ${icon}"></i> ${label} (${cnt})
-    </button>`;
+    return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} (${cnt})</button>`;
   };
 
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head">
-      <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button>
-        <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
-      </div>
+      <h2 style="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-sm" onclick="suiviBackToSites()" title="Retour"><i class="ti ti-arrow-left"></i></button>
+        <span><i class="ti ti-building"></i> ${site}</span>
+      </h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body">
       <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:14px;font-weight:700">Avancement global</div>
-          <div style="font-size:20px;font-weight:700">${totPct}%</div>
+          <div style="font-size:14px;font-weight:700">Avancement ${site}</div>
+          <div style="font-size:20px;font-weight:700">${sitePct}%</div>
         </div>
-        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
-        <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
+        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${sitePct}%;border-radius:5px"></div></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:6px">${siteInv.toLocaleString('fr-FR')} / ${siteAll.length.toLocaleString('fr-FR')} articles · ${bureauData.length} bureaux</div>
       </div>
 
-      <!-- Filtre par statut -->
       <div style="margin-bottom:14px">
-        <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer par statut</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer les bureaux</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${filterBtn('all', 'Tous', 'var(--accent)', 'ti-layout-grid')}
           ${filterBtn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock')}
@@ -2074,17 +2403,53 @@ function openSuiviPanel() {
         </div>
       </div>
 
-      ${rows}
-
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-        <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
-      </div>
+      ${groupedHTML}
     </div>`);
 }
 function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
-async function changeSiteStatut(site, statut) { await writeSuivi(site, statut, ''); openSuiviPanel(); renderMain(); showToast(site + ' → ' + statut, 'success'); }
-async function writeSuivi(site, statut, obs) { if (!gTok || !gsConf.sheetId) return; const now = new Date().toLocaleDateString('fr-FR'); const prev = siteStatuts[site] || {}; const dateDebut = prev.dateDebut || now; siteStatuts[site] = { statut, by: currentUser, dateDebut, dateMaj: now, obs: obs || prev.obs || '' }; saveLocal(); try { const d = await sGet(`${SH_SUIVI}!A2:A`); const rows = d.values || []; const idx = rows.findIndex(r => r[0] === site); const row = [site, statut, currentUser, dateDebut, now, obs || prev.obs || '']; if (idx >= 0) { await sPut(`${SH_SUIVI}!A${idx + 2}:F${idx + 2}`, [row]); } else { await sAppend(SH_SUIVI, [row]); } } catch(e) { console.error('Suivi write error', e); } }
-async function generateExportFinal() { if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; } showToast('Génération export final…', 'info'); try { await ensureSheets(); const all = [...DB, ...newItems.filter(r => !r._newLoc)]; const rows = all.map(r => { const u = updates[r.cbi] || {}; const photoLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return [r.site, r.bat, r.etage, r.bureau, r.cbe, r.cbi, r.fam, r.art, r.qty, u.serv || r.serv, u.renouv || r.renouv, u.obs !== undefined ? u.obs : (r.obs || ''), u.trouve || '', r.serie || '', r.modele || '', r.marque || '', r.dir || '', r.patrim || '', u.by || r.nom_inv || '', u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', r._new ? 'OUI' : 'NON', photoLinks]; }); await sPut(`${SH_EXPORT}!A2:W2`, [['']]); for (let i = 0; i < rows.length; i += 500) { await sPut(`${SH_EXPORT}!A${i + 2}:W${i + rows.slice(i, i + 500).length + 1}`, rows.slice(i, i + 500)); } showToast(`Export final généré : ${rows.length} lignes dans la feuille "${SH_EXPORT}"`, 'success'); } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); } }
+async function changeSiteStatut(site, statut) {
+  await writeSuivi(site, statut);
+  const now = new Date().toLocaleDateString('fr-FR');
+  const prev = siteStatuts[site] || {};
+  siteStatuts[site] = { statut, by: currentUser, dateDebut: prev.dateDebut || now, dateMaj: now, obs: prev.obs || '' };
+  saveLocal();
+  openSuiviPanel();
+  renderMain();
+  showToast(site + ' → ' + statut, 'success');
+}
+async function generateExportFinal() {
+  if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
+  showToast('Génération export final…', 'info');
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
+    const meta = await r.json();
+    const exist = meta.sheets.map(s => s.properties.title);
+    if (!exist.includes(SH_EXPORT)) {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SH_EXPORT } } }] }) });
+      await sPut(`${SH_EXPORT}!A1`, [H_EXPORT]);
+    }
+    const all = [...DB, ...newItems];
+    const rows = all.map(r => {
+      const u = updates[r.cbi] || {};
+      const photoLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | ');
+      return [r.site, r.bat, r.etage, r.bureau, r.cbe, r.cbi, r.fam, r.art, r.qty,
+        u.serv || r.serv, u.renouv || r.renouv,
+        u.obs !== undefined ? u.obs : (r.obs || ''),
+        u.trouve || '', r.serie || '', r.modele || '', r.marque || '',
+        r.dir || '', r.patrim || '',
+        u.by || r.nom_inv || '',
+        u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '',
+        updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE',
+        r._new ? 'OUI' : 'NON',
+        photoLinks];
+    });
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      await sPut(`${SH_EXPORT}!A${i + 2}:W${i + batch.length + 1}`, batch);
+    }
+    showToast(`Export final généré : ${rows.length} lignes dans "${SH_EXPORT}"`, 'success');
+  } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); console.error(e); }
+}
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
 function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
 function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${u.by}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${item.cbi}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${item.site}" data-bat="${item.bat}" data-etage="${item.etage}" data-bureau="${item.bureau}" onclick="navFromDash(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`; }
@@ -2179,16 +2544,15 @@ async function saveEditLocation(btn) {
   if (!newName) { showToast('Le nom est requis', 'warn'); return; }
 
   let newSite = oldSite, newBat = oldBat, newEtage = oldEtage, newBureau = oldBureau;
+  let targetBatId = null;
 
-  if (level === 'site') {
-    newSite = newName;
-  } else if (level === 'bat') {
-    newBat = newName;
-  } else if (level === 'etage') {
+  if (level === 'site') newSite = newName;
+  else if (level === 'bat') newBat = newName;
+  else if (level === 'etage') {
     newEtage = newName;
     const batSel = document.getElementById('el-bat');
     if (batSel && batSel.value) newBat = batSel.value;
-  } else { // bureau
+  } else {
     newBureau = newName;
     const etageSel = document.getElementById('el-etage');
     const batSel = document.getElementById('el-bat');
@@ -2196,35 +2560,113 @@ async function saveEditLocation(btn) {
     if (batSel && batSel.value) newBat = batSel.value;
   }
 
-  // Mettre à jour tous les articles concernés
-  let count = 0;
-  const all = [...DB, ...newItems];
-  for (let i = 0; i < all.length; i++) {
-    const r = all[i];
-    let matches = false;
-    if (level === 'site') matches = (r.site === oldSite);
-    else if (level === 'bat') matches = (r.site === oldSite && r.bat === oldBat);
-    else if (level === 'etage') matches = (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage);
-    else matches = (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau);
-
-    if (matches) {
-      if (level === 'site') r.site = newSite;
-      else if (level === 'bat') r.bat = newBat;
-      else if (level === 'etage') { r.etage = newEtage; r.bat = newBat; }
-      else { r.bureau = newBureau; r.etage = newEtage; r.bat = newBat; }
-      count++;
+  // Détecter si bat de destination a changé
+  if (newBat !== oldBat) {
+    for (const bid in REL_BATS) {
+      const b = REL_BATS[bid];
+      const sCode = (REL_SITES[b.site_id] || {}).site_code;
+      if (sCode === oldSite && b.bat_nom === newBat) { targetBatId = bid; break; }
     }
   }
 
-  // Enregistrer dans Google Sheets
-  if (gTok) {
-    try {
-      const obs = level === 'site' ? `SITE renommé: ${oldSite} → ${newSite}`
-        : level === 'bat' ? `BATIMENT renommé: ${oldBat} → ${newBat}`
-        : level === 'etage' ? `ETAGE renommé: ${oldEtage} → ${newEtage}${newBat !== oldBat ? ' (vers ' + newBat + ')' : ''}`
-        : `BUREAU renommé: ${oldBureau} → ${newBureau}${newBat !== oldBat || newEtage !== oldEtage ? ' (vers ' + newBat + '›' + newEtage + ')' : ''}`;
-      await sAppend(SH_LOC, [[newSite, newBat, newEtage, newBureau, '', obs, currentUser, new Date().toISOString()]]);
-    } catch(e) {}
+  // ───── Mettre à jour directement la table relationnelle correspondante ─────
+  let sheetRow = null, sheetRange = '', updateData = [], count = 0;
+
+  try {
+    if (level === 'site') {
+      // Modifier la ligne dans Sites
+      const site_id = findSiteIdByCode(oldSite);
+      const sitesArr = Object.keys(REL_SITES);
+      const idx = sitesArr.indexOf(site_id);
+      if (idx >= 0 && gTok) {
+        await sPut(`Sites!B${idx + 2}`, [[newName]]);
+        REL_SITES[site_id].site_code = newName;
+      }
+      // Mettre à jour la dénormalisation dans DB
+      for (const r of DB) if (r.site === oldSite) { r.site = newName; count++; }
+      for (const r of newItems) if (r.site === oldSite) { r.site = newName; count++; }
+      // Mettre à jour siteStatuts
+      if (siteStatuts[oldSite]) { siteStatuts[newName] = siteStatuts[oldSite]; delete siteStatuts[oldSite]; }
+    }
+    else if (level === 'bat') {
+      // Modifier la ligne dans Batiments
+      let bat_id = null;
+      for (const bid in REL_BATS) {
+        const b = REL_BATS[bid];
+        const sCode = (REL_SITES[b.site_id] || {}).site_code;
+        if (sCode === oldSite && b.bat_nom === oldBat) { bat_id = bid; break; }
+      }
+      const batsArr = Object.keys(REL_BATS);
+      const idx = batsArr.indexOf(bat_id);
+      if (idx >= 0 && gTok) {
+        await sPut(`Batiments!B${idx + 2}`, [[newName]]);
+        REL_BATS[bat_id].bat_nom = newName;
+      }
+      // Dénormalisation
+      for (const r of DB) if (r.site === oldSite && r.bat === oldBat) { r.bat = newName; count++; }
+      for (const r of newItems) if (r.site === oldSite && r.bat === oldBat) { r.bat = newName; count++; }
+    }
+    else if (level === 'etage') {
+      // Mettre à jour TOUTES les lignes Emplacements du même bâtiment + étage
+      const empsToUpdate = [];
+      for (const eid in REL_EMPS) {
+        const e = REL_EMPS[eid];
+        const sCode = (REL_SITES[e.site_id] || {}).site_code;
+        const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
+        if (sCode === oldSite && bNom === oldBat && e.etage === oldEtage) {
+          empsToUpdate.push(eid);
+        }
+      }
+      if (gTok) {
+        const empsArr = Object.keys(REL_EMPS);
+        for (const eid of empsToUpdate) {
+          const idx = empsArr.indexOf(eid);
+          if (idx >= 0) {
+            const updates_e = [REL_EMPS[eid].etage = newEtage, REL_EMPS[eid].bureau];
+            if (targetBatId) { REL_EMPS[eid].bat_id = targetBatId; }
+            await sPut(`Emplacements!D${idx + 2}:E${idx + 2}`, [[REL_EMPS[eid].bat_id, newEtage]]);
+          }
+        }
+      }
+      // Dénormalisation
+      for (const r of [...DB, ...newItems]) {
+        if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage) {
+          r.etage = newEtage;
+          if (newBat !== oldBat) r.bat = newBat;
+          count++;
+        }
+      }
+    }
+    else { // bureau
+      // Modifier 1 seule ligne dans Emplacements
+      let emp_id = null;
+      for (const eid in REL_EMPS) {
+        const e = REL_EMPS[eid];
+        const sCode = (REL_SITES[e.site_id] || {}).site_code;
+        const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
+        if (sCode === oldSite && bNom === oldBat && e.etage === oldEtage && e.bureau === oldBureau) { emp_id = eid; break; }
+      }
+      if (emp_id && gTok) {
+        const empsArr = Object.keys(REL_EMPS);
+        const idx = empsArr.indexOf(emp_id);
+        const newBatId = targetBatId || REL_EMPS[emp_id].bat_id;
+        await sPut(`Emplacements!D${idx + 2}:F${idx + 2}`, [[newBatId, newEtage, newBureau]]);
+        REL_EMPS[emp_id].bat_id = newBatId;
+        REL_EMPS[emp_id].etage = newEtage;
+        REL_EMPS[emp_id].bureau = newBureau;
+      }
+      // Dénormalisation
+      for (const r of [...DB, ...newItems]) {
+        if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau) {
+          r.bureau = newBureau; r.etage = newEtage; r.bat = newBat;
+          count++;
+        }
+      }
+    }
+  } catch(e) {
+    showToast('Erreur modification: ' + e.message, 'danger');
+    console.error(e);
+    return;
   }
 
   saveLocal();
@@ -2232,7 +2674,7 @@ async function saveEditLocation(btn) {
   buildHier();
   invalidateStatsCache();
 
-  // Si on est dans la vue inventaire avec cet emplacement, naviguer vers le nouveau
+  // Si on était dans l'inventaire de ce bureau, mettre à jour curLoc
   if (curLoc.site === oldSite && (level === 'site' || curLoc.bat === oldBat) && (level === 'site' || level === 'bat' || curLoc.etage === oldEtage) && (level !== 'bureau' || curLoc.bureau === oldBureau)) {
     if (level === 'site') navigateTo(newSite, curLoc.bat, curLoc.etage, curLoc.bureau);
     else if (level === 'bat') navigateTo(curLoc.site, newBat, curLoc.etage, curLoc.bureau);
@@ -2266,21 +2708,59 @@ async function saveLoc() {
   const cbe = document.getElementById('al-cbe').value.trim();
   const type = document.getElementById('al-type').value.trim();
   if (!site || !bat || !etage || !bureau) { showToast('Tous les champs sont requis', 'warn'); return; }
-  if (!HIER[site]) HIER[site] = {};
-  if (!HIER[site][bat]) HIER[site][bat] = {};
-  if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
-  if (!HIER[site][bat][etage].includes(bureau)) HIER[site][bat][etage].push(bureau);
-  HIER[site][bat][etage].sort();
-  const newLoc = { site, bat, etage, bureau, cbe, type, _addedBy: currentUser, _addedAt: Date.now() };
-  newLocs.push(newLoc);
-  await writeNL(newLoc);
-  saveLocal();
-  closeModal();
-  const ss = document.getElementById('sel-site');
-  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
-  showToast(`Emplacement ${bureau} ajouté`, 'success');
-  renderMain();
-  renderLocationsView();
+
+  try {
+    // 1. Créer le site s'il n'existe pas
+    let site_id = findSiteIdByCode(site);
+    if (!site_id) {
+      site_id = 'S' + String(Object.keys(REL_SITES).length + 1).padStart(2, '0');
+      REL_SITES[site_id] = { site_id, site_code: site, commune: '' };
+      if (gTok) await sAppend('Sites', [[site_id, site, '']]);
+    }
+
+    // 2. Créer le bâtiment s'il n'existe pas
+    let bat_id = null;
+    for (const bid in REL_BATS) {
+      if (REL_BATS[bid].site_id === site_id && REL_BATS[bid].bat_nom === bat) { bat_id = bid; break; }
+    }
+    if (!bat_id) {
+      bat_id = 'B' + String(Object.keys(REL_BATS).length + 1).padStart(4, '0');
+      REL_BATS[bat_id] = { bat_id, bat_nom: bat, ref_batiment: '', site_id, gps: '', type_bat: '', direction: '' };
+      if (gTok) await sAppend('Batiments', [[bat_id, bat, '', site_id, '', '', '']]);
+    }
+
+    // 3. Créer l'emplacement
+    let emp_id = null;
+    for (const eid in REL_EMPS) {
+      const e = REL_EMPS[eid];
+      if (e.bat_id === bat_id && e.etage === etage && e.bureau === bureau) { emp_id = eid; break; }
+    }
+    if (!emp_id) {
+      emp_id = 'E' + String(Object.keys(REL_EMPS).length + 1).padStart(5, '0');
+      REL_EMPS[emp_id] = { emp_id, cbe, site_id, bat_id, etage, bureau, type_empl: type };
+      if (gTok) await sAppend('Emplacements', [[emp_id, cbe, site_id, bat_id, etage, bureau, type]]);
+    } else {
+      showToast('Cet emplacement existe déjà', 'warn');
+      return;
+    }
+
+    // Mettre à jour la hiérarchie locale
+    if (!HIER[site]) HIER[site] = {};
+    if (!HIER[site][bat]) HIER[site][bat] = {};
+    if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
+    if (!HIER[site][bat][etage].includes(bureau)) HIER[site][bat][etage].push(bureau);
+    HIER[site][bat][etage].sort();
+
+    saveLocal();
+    closeModal();
+    invalidateStatsCache();
+    showToast(`Emplacement ${bureau} créé`, 'success');
+    if (currentView === 'locations') renderLocationsView();
+    else renderMain();
+  } catch(e) {
+    showToast('Erreur création: ' + e.message, 'danger');
+    console.error(e);
+  }
 }
 
 // ---------- INIT ----------
