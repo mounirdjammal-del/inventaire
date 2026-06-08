@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 7.5 -->
+<!-- VERSION 8.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -175,6 +175,20 @@ textarea{min-height:80px;resize:vertical}
 .pbar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:6px}
 .pbar-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1);background:var(--accent)}
 
+/* ── Classes utilitaires ── */
+.txt-xs{font-size:11px;color:var(--text3)}
+.txt-sm-muted{font-size:14px;color:var(--text3)}
+.txt-12-muted{font-size:12px;color:var(--text3)}
+.flex-center{display:flex;align-items:center;gap:8px}
+.flex-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sync-indicator{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+.sync-indicator.pending{background:var(--warn-bg);color:var(--warn-txt);border:1px solid var(--warn-ring)}
+.sync-indicator.ok{background:var(--success-bg);color:var(--success-txt)}
+.sync-indicator.offline{background:var(--danger-bg);color:var(--danger-txt);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.skel{background:linear-gradient(90deg,var(--bg2) 0%,var(--bg3) 50%,var(--bg2) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
 /* ── TAGS & MISC ── */
 .tag{display:inline-block;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:2px 10px;font-size:12px;color:var(--text2);margin:2px 3px 2px 0;font-weight:500}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:var(--radius-lg);font-size:14px;z-index:999;display:flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:var(--shadow-lg);transition:opacity .3s;font-weight:500;animation:slideUp .3s}
@@ -315,6 +329,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
     <button class="btn btn-menu" id="btn-menu" onclick="toggleSidebar()" aria-label="Menu"><i class="ti ti-menu-2" style="font-size:22px"></i></button>
     <div class="logo">Inventaire <span>Immo</span></div>
     <div id="user-area"></div>
+    <div id="pending-indicator" style="display:none"></div>
     <div id="gs-badge" class="gs-badge gs-off" onclick="openGsPanel()" title="Google Sheets">
       <div class="dot" id="gs-dot"></div>
       <span id="gs-txt">Configurer</span>
@@ -431,9 +446,8 @@ let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
-let drillState = { site: null, bat: null, etage: null };
+// drillState/progressFilter remplacés par dashFilter/dashSiteFilter/dashSearch (déclarés plus bas)
 let currentView = 'inventory';
-let progressFilter = 'all'; // all | inventoried | pending | found | notfound
 let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
 let googleProfile = { name: '', email: '', picture: '' };
 let pendingWrites = [];
@@ -585,6 +599,24 @@ function setSyncing(on, msg) {
   isSyncing = on;
   if (on) { updateBadge('sync'); document.getElementById('gs-dot')?.classList.add('pulse'); }
   else updateBadge(gTok ? 'ok' : null);
+  renderPendingIndicator();
+}
+
+// Indicateur des écritures en attente de sync
+function renderPendingIndicator() {
+  const el = document.getElementById('pending-indicator');
+  if (!el) return;
+  const n = pendingWrites.length;
+  if (n === 0) { el.style.display = 'none'; return; }
+  const offline = !gTok;
+  const cls = offline ? 'offline' : 'pending';
+  const icon = offline ? 'ti-cloud-off' : 'ti-cloud-upload';
+  const label = offline ? `${n} hors-ligne` : `${n} en attente`;
+  el.style.display = '';
+  el.className = 'sync-indicator ' + cls;
+  el.title = `${n} écriture(s) en attente de synchronisation${offline ? ' (hors-ligne)' : ''} — cliquez pour forcer`;
+  el.innerHTML = `<i class="ti ${icon}"></i>${label}`;
+  el.onclick = () => { if (gTok && !isSyncing) syncNow(); };
 }
 function disconnectGoogle() {
   gTok = null; gTokExpiry = 0;
@@ -862,19 +894,21 @@ async function writeUpd(cbi, u) {
   const item = findItemByCbi(cbi) || {};
   const emp_id = item.emp_id || '';
   const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
-  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); return; }
+  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); renderPendingIndicator(); return; }
   try {
     await sAppend('Updates', [row]);
   } catch(e) {
     pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } });
+    renderPendingIndicator();
   }
 }
 async function writeNI(item) {
-  if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); return; }
+  if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); renderPendingIndicator(); return; }
   try {
     await sAppend('NouveauxArticles', [[item.cbi, item.cbe || '', item.emp_id || '', item.article_id || '', item.marque || '', item.modele || '', item.serie || '', item.qty, item.serv, item.renouv, item.obs || '', item._addedBy, new Date(item._addedAt).toISOString()]]);
   } catch(e) {
     pendingWrites.push({ type: 'ni', d: item });
+    renderPendingIndicator();
   }
 }
 async function writeSuivi(site_code, statut) {
@@ -899,13 +933,20 @@ async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
-  if (upd.length) await sAppend('Updates', upd.map(p => {
-    const u = p.d;
-    const it = u.item || {};
-    return [u.cbi, u.emp_id || '', it.cbe || '', it.site || '', it.bat || '', it.etage || '', it.bureau || '', it.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
-  }));
-  if (ni.length) await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
-  pendingWrites = [];
+  try {
+    if (upd.length) await sAppend('Updates', upd.map(p => {
+      const u = p.d;
+      const it = u.item || {};
+      return [u.cbi, u.emp_id || '', it.cbe || '', it.site || '', it.bat || '', it.etage || '', it.bureau || '', it.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
+    }));
+    if (ni.length) await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+    pendingWrites = [];
+    renderPendingIndicator();
+    if (upd.length + ni.length > 0) showToast(`${upd.length + ni.length} écriture(s) synchronisée(s)`, 'success');
+  } catch(e) {
+    console.error('pushPending error', e);
+    showToast('Erreur de sync — réessai automatique', 'warn');
+  }
 }
 
 async function loadFromSheets() {
@@ -1063,8 +1104,9 @@ function goView(view) {
     renderArticlesView();
   } else if (view === 'progress') {
     sidebar.style.display = 'none';
-    drillState = { site: null, bat: null, etage: null };
-    progressFilter = 'all';
+    dashFilter = 'en_cours';
+    dashSiteFilter = 'all';
+    dashSearch = '';
     renderDashboard();
   }
 }
@@ -1113,7 +1155,7 @@ function renderMain() {
         </div>
         <div style="text-align:right">
           <div style="font-size:24px;font-weight:800;color:${barColor};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
-          <div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div>
+          <div class="txt-xs">${inv}/${items.length}</div>
         </div>
       </div>
       <div class="pbar" style="height:8px;border-radius:4px"><div class="pbar-fill" style="width:${pct}%;border-radius:4px;background:${barColor}"></div></div>
@@ -1229,7 +1271,7 @@ function renderInventoryHome() {
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer" onclick="resumeInventory(this.parentElement)">
             <div style="flex:1;min-width:0">
               <div style="font-size:14px;font-weight:700;margin-bottom:3px">${b.bureau}</div>
-              <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage}</div>
+              <div class="txt-xs">${b.site} › ${b.bat} › ${b.etage}</div>
               <div style="font-size:11px;color:var(--text2);margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 ${b.lastBy ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:10px;font-weight:600"><i class="ti ti-user" style="font-size:11px"></i>${b.lastBy}</span>` : ''}
                 <span style="color:var(--text3);font-size:10px"><i class="ti ti-clock" style="font-size:10px"></i> ${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
@@ -1237,7 +1279,7 @@ function renderInventoryHome() {
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-size:16px;font-weight:800;color:var(--warn-txt)">${b.pct}%</div>
-              <div style="font-size:11px;color:var(--text3)">${b.inv}/${b.total}</div>
+              <div class="txt-xs">${b.inv}/${b.total}</div>
             </div>
           </div>
           <div class="pbar" style="margin-top:8px"><div class="pbar-fill" style="width:${b.pct}%;background:var(--warn-txt)"></div></div>
@@ -1263,7 +1305,7 @@ function renderInventoryHome() {
             <i class="ti ti-circle-check" style="color:var(--success-txt);font-size:18px;flex-shrink:0"></i>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600">${b.bureau}</div>
-              <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage} · ${b.total} articles</div>
+              <div class="txt-xs">${b.site} › ${b.bat} › ${b.etage} · ${b.total} articles</div>
               ${b.lastBy ? `<div style="font-size:11px;color:var(--success-txt);margin-top:3px"><i class="ti ti-user" style="font-size:10px"></i> Terminé par ${b.lastBy}</div>` : ''}
             </div>
             <i class="ti ti-arrow-right" style="font-size:16px;color:var(--text3);flex-shrink:0"></i>
@@ -1303,10 +1345,10 @@ function openBureauArticles(el) {
       const sv = u.serv || item.serv;
       const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
       const trouve = u.trouve || '';
-      return `<div class="t-row inventoried" data-cbi="${item.cbi}" onclick="closeModal();setTimeout(()=>openEditItem_cbi(this.dataset.cbi),100)" style="grid-template-columns:1fr 100px 32px;cursor:pointer;border-radius:var(--radius);margin-bottom:6px;border:1px solid var(--border)">
+      return `<div class="t-row inventoried" data-cbi="${esc(item.cbi)}" onclick="closeModal();setTimeout(()=>openEditItem_cbi(this.dataset.cbi),100)" style="grid-template-columns:1fr 100px 32px;cursor:pointer;border-radius:var(--radius);margin-bottom:6px;border:1px solid var(--border)">
         <div style="overflow:hidden">
-          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.art}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${item.cbi} · ${u.by || ''} — ${new Date(u.ts).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.art)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(item.cbi)} · ${u.by || ''} — ${new Date(u.ts).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
           ${trouve === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt);font-size:10px;margin-top:3px;display:inline-block">✗ Non trouvé</span>' : ''}
         </div>
         <div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div>
@@ -1347,7 +1389,7 @@ function renderTable() {
       const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
       const tr = u.trouve || '';
       const trBadge = tr === 'OUI' ? '<span style="font-size:11px;color:var(--success-txt);font-weight:700">✓</span>' : tr === 'NON' ? '<span style="font-size:11px;color:var(--danger-txt);font-weight:700">✗</span>' : '';
-      return `<div class="t-row${ok ? ' inventoried' : ''}" onclick="openEditItem_cbi('${r.cbi}')"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}${r._new ? ` <span class="badge b-new" style="font-size:10px">Nouveau</span>` : ''}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div><div style="font-size:12px;color:var(--text3)">${r.fam}${trBadge ? ' · ' + trBadge : ''}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok ? '<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>' : '<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi] || []).length ? '<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>' : ''}</div></div>`;
+      return `<div class="t-row${ok ? ' inventoried' : ''}" onclick="openEditItem_cbi('${esc(r.cbi)}')"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.cbi)}${r._new ? ` <span class="badge b-new" style="font-size:10px">Nouveau</span>` : ''}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${esc(r.art)}</div><div class="txt-12-muted">${esc(r.fam)}${trBadge ? ' · ' + trBadge : ''}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok ? '<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>' : '<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi] || []).length ? '<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>' : ''}</div></div>`;
     }).join('')}
   </div>`;
 }
@@ -1398,7 +1440,7 @@ function renderLocationsView() {
           <span style="font-size:14px;font-weight:700;margin-left:8px">${stats.pct}%</span>
           <i class="ti ti-chevron-down" style="font-size:14px;color:var(--text3);transition:transform .2s"></i>
         </div>
-        <button class="btn btn-sm" style="min-height:32px;padding:0 8px;box-shadow:none" onclick="openEditLocation('${site}','','','')" title="Modifier ce site"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
+        <button class="btn btn-sm" style="min-height:32px;padding:0 8px;box-shadow:none" onclick="openEditLocation('${site}','','','')" title="Modifier ce site"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
       </div>
       <div class="loc-site-content" style="display:none;border-top:1px solid var(--border)"></div>
     </div>`;
@@ -1478,15 +1520,15 @@ function showLocSearchResult(results, query, totalCount) {
       const stats = getStatsFor(r.site, r.bat, r.etage, r.bureau);
       const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
       return `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:6px">
-        <i class="ti ti-map-pin" style="font-size:14px;color:var(--text3)"></i>
+        <i class="ti ti-map-pin" class="txt-sm-muted"></i>
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600">${r.bureau}</div>
-          <div style="font-size:11px;color:var(--text3)">${r.site} › ${r.bat} › ${r.etage}</div>
+          <div style="font-size:14px;font-weight:600">${esc(r.bureau)}</div>
+          <div class="txt-xs">${esc(r.site)} › ${esc(r.bat)} › ${esc(r.etage)}</div>
         </div>
         <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
-        <span style="font-size:11px;color:var(--text3)">${stats.inv}/${stats.total}</span>
-        <button class="btn btn-sm" data-site="${r.site}" data-bat="${r.bat}" data-etage="${r.etage}" data-bureau="${r.bureau}" onclick="goToInventory(this)" title="Inventaire"><i class="ti ti-clipboard-check"></i></button>
-        <button class="btn btn-sm" onclick="openEditLocation('${r.site}','${r.bat}','${r.etage}','${r.bureau}')" title="Modifier"><i class="ti ti-edit"></i></button>
+        <span class="txt-xs">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" data-site="${esc(r.site)}" data-bat="${esc(r.bat)}" data-etage="${esc(r.etage)}" data-bureau="${esc(r.bureau)}" onclick="goToInventory(this)" title="Inventaire"><i class="ti ti-clipboard-check"></i></button>
+        <button class="btn btn-sm" onclick="openEditLocation('${esc(r.site)}','${esc(r.bat)}','${esc(r.etage)}','${esc(r.bureau)}')" title="Modifier"><i class="ti ti-edit"></i></button>
       </div>`;
     }).join('');
 }
@@ -1527,11 +1569,11 @@ function renderLocSiteContent(container, site) {
     html += `<div style="padding:10px 14px 10px 36px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
         <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600" onclick="toggleLocBat(this)">
-          <i class="ti ti-door" style="font-size:14px;color:var(--text3)"></i>${bat}
+          <i class="ti ti-door" class="txt-sm-muted"></i>${bat}
           <span style="font-size:11px;color:var(--text3);font-weight:500">· ${batStats.total} art. · ${batStats.pct}%</span>
           <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s"></i>
         </div>
-        <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','','')" title="Modifier ce bâtiment"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
+        <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','','')" title="Modifier ce bâtiment"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
       </div>
       <div class="loc-bat-content" style="display:none">`;
     etages.forEach(etage => {
@@ -1540,20 +1582,20 @@ function renderLocSiteContent(container, site) {
       html += `<div style="margin-left:16px;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
           <div style="flex:1;font-size:12px;color:var(--text2);font-weight:600">${etage} <span style="color:var(--text3);font-weight:500">· ${etgStats.total} art. · ${etgStats.pct}%</span></div>
-          <button class="btn btn-sm" style="min-height:24px;padding:0 5px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','')" title="Modifier cet étage"><i class="ti ti-edit" style="font-size:12px;color:var(--text3)"></i></button>
+          <button class="btn btn-sm" style="min-height:24px;padding:0 5px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','')" title="Modifier cet étage"><i class="ti ti-edit" class="txt-12-muted"></i></button>
         </div>`;
       bureaux.forEach(bureau => {
         const stats = getStatsFor(site, bat, etage, bureau);
         const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
         html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)">
           <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)">
-            <i class="ti ti-map-pin" style="font-size:12px;color:var(--text3)"></i>
+            <i class="ti ti-map-pin" class="txt-12-muted"></i>
             <div style="flex:1;font-size:13px">${bureau}</div>
             <span style="font-size:12px;font-weight:600;color:${pctColor}">${stats.pct}%</span>
-            <span style="font-size:11px;color:var(--text3)">${stats.inv}/${stats.total}</span>
+            <span class="txt-xs">${stats.inv}/${stats.total}</span>
             <i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i>
           </div>
-          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier ce bureau"><i class="ti ti-edit" style="font-size:14px;color:var(--text3)"></i></button>
+          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier ce bureau"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
         </div>`;
       });
       html += `</div>`;
@@ -1617,103 +1659,206 @@ function filterArticlesView() {
     const sv = u.serv || r.serv;
     const ok = !!updates[r.cbi];
     const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
-    return `<div class="t-row${ok ? ' inventoried' : ''}" data-cbi="${r.cbi}" onclick="openEditItem_cbi(this.dataset.cbi)"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${r.cbi}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${r.art}</div><div style="font-size:11px;color:var(--text3)">${r.fam} · ${r.bureau}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center">${ok ? '<i class="ti ti-check" style="color:var(--success-txt)"></i>' : ''}</div></div>`;
+    return `<div class="t-row${ok ? ' inventoried' : ''}" data-cbi="${esc(r.cbi)}" onclick="openEditItem_cbi(this.dataset.cbi)"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.cbi)}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${esc(r.art)}</div><div class="txt-xs">${esc(r.fam)} · ${esc(r.bureau)}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center">${ok ? '<i class="ti ti-check" style="color:var(--success-txt)"></i>' : ''}</div></div>`;
   }).join('')}</div>${total > 50 ? `<div style="text-align:center;padding:12px"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">${total} résultats — ${filtered.length} affichés</div><button class="btn btn-sm" onclick="showMoreArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : ''}`;
 }
 
 // ---------- DASHBOARD PROGRESS ----------
+let dashFilter = 'en_cours';        // en_cours | non_traite | termine | all
+let dashSiteFilter = 'all';
+let dashSearch = '';
+
+function setDashFilter(f) { dashFilter = f; renderDashboardList(); }
+function setDashSiteFilter(s) { dashSiteFilter = s; renderDashboardList(); }
+
+// Statut d'un bureau d'après son avancement
+function getBureauDashStatut(stats) {
+  if (!stats.total) return 'VIDE';
+  if (stats.pct === 100) return 'TERMINE';
+  if (stats.pct > 0) return 'EN COURS';
+  return 'NON TRAITE';
+}
+
+// Construire la liste de tous les bureaux avec leurs stats
+function buildDashBureauData() {
+  const data = [];
+  for (const site of Object.keys(HIER).sort()) {
+    for (const bat of Object.keys(HIER[site]).sort()) {
+      for (const etage of Object.keys(HIER[site][bat]).sort()) {
+        for (const bureau of HIER[site][bat][etage]) {
+          const stats = getStatsFor(site, bat, etage, bureau);
+          if (!stats.total) continue;
+          const statut = getBureauDashStatut(stats);
+          const info = getBureauLastInfo(site, bat, etage, bureau);
+          data.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
+        }
+      }
+    }
+  }
+  return data;
+}
+
 function renderDashboard() {
   const main = document.getElementById('main');
   const tot = DB.length + newItems.filter(r => !r._newLoc).length;
   const inv = Object.keys(updates).length;
   const pct = tot ? Math.round(inv / tot * 100) : 0;
   const synInfo = lastSync ? `Sync: ${new Date(lastSync).toLocaleTimeString('fr-FR')}` : (gTok ? 'Connecté' : 'Non connecté');
-  const _s = drillState.site, _b = drillState.bat, _e = drillState.etage;
-  let breadcrumb = '<span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo(null,null,null)">Tous les sites</span>';
-  if (_s) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo('${_s}',null,null)">${_s}</span>`;
-  if (_b) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="cursor:pointer;color:var(--info-txt)" onclick="drillTo('${_s}','${_b}',null)">${_b}</span>`;
-  if (_e) breadcrumb += ` <span style="color:var(--text3)">›</span> <span style="color:var(--text)">${_e}</span>`;
-  main.innerHTML = `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:700;margin-bottom:3px">Avancement</div><div style="font-size:12px;color:var(--text2)">${synInfo}</div></div>${gTok ? '<button class="btn btn-sm" onclick="syncNow()"><i class="ti ti-refresh"></i></button>' : '<button class="btn btn-sm" onclick="openGsPanel()"><i class="ti ti-brand-google"></i></button>'}</div>
-    <div class="stats-row" style="margin-bottom:14px"><div class="stat-card"><div class="stat-lbl">Total</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Restant</div><div class="stat-val" style="color:var(--text2)">${(tot - inv).toLocaleString('fr-FR')}</div></div><div class="stat-card"><div class="stat-lbl">Global</div><div class="stat-val">${pct}%</div></div></div>
-    <div class="pbar" style="height:10px;border-radius:5px;margin-bottom:18px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div>
-    <div style="font-size:13px;margin-bottom:12px;padding:8px 12px;background:var(--bg2);border-radius:var(--radius);display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-map-pin" style="font-size:14px;color:var(--text3)"></i>${breadcrumb}</div>
-    <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span style="font-size:12px;color:var(--text3);font-weight:600">Filtrer :</span>
-      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='all'?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="setProgressFilter('all')">Tous</button>
-      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='inventoried'?'background:var(--success-txt);color:#fff;border-color:var(--success-txt)':''}" onclick="setProgressFilter('inventoried')">✓ Inventoriés</button>
-      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='pending'?'background:var(--warn-txt);color:#fff;border-color:var(--warn-txt)':''}" onclick="setProgressFilter('pending')">⏳ En attente</button>
-      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='found'?'background:var(--success-txt);color:#fff;border-color:var(--success-txt)':''}" onclick="setProgressFilter('found')">✓ Trouvés</button>
-      <button class="btn btn-sm" style="min-height:30px;font-size:12px;${progressFilter==='notfound'?'background:var(--danger-txt);color:#fff;border-color:var(--danger-txt)':''}" onclick="setProgressFilter('notfound')">✗ Non trouvés</button>
+
+  const sites = Object.keys(HIER).sort();
+  const siteOpts = ['<option value="all">Tous les sites</option>']
+    .concat(sites.map(s => `<option value="${esc(s)}" ${dashSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
+    .join('');
+
+  main.innerHTML = `
+    <div class="flex-between" style="margin-bottom:14px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:3px">Avancement de l'inventaire</div>
+        <div style="font-size:12px;color:var(--text2)">${synInfo}</div>
+      </div>
+      ${gTok ? '<button class="btn btn-sm" onclick="syncNow()"><i class="ti ti-refresh"></i></button>' : '<button class="btn btn-sm" onclick="openGsPanel()"><i class="ti ti-brand-google"></i></button>'}
     </div>
-    <div id="hier-view"></div>
-    ${!drillState.site ? renderByUser() : ''}`;
-  renderHierView();
+
+    <div class="stats-row" style="margin-bottom:14px">
+      <div class="stat-card"><div class="stat-lbl">Articles</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Inventoriés</div><div class="stat-val" style="color:var(--success-txt)">${inv.toLocaleString('fr-FR')}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Restant</div><div class="stat-val" style="color:var(--text2)">${(tot - inv).toLocaleString('fr-FR')}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Global</div><div class="stat-val">${pct}%</div></div>
+    </div>
+    <div class="pbar" style="height:10px;border-radius:5px;margin-bottom:18px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div>
+
+    <!-- Filtre par site -->
+    <div style="margin-bottom:10px">
+      <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
+      <select onchange="setDashSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
+    </div>
+
+    <!-- Filtres par état -->
+    <div style="margin-bottom:10px">
+      <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">État d'inventaire</label>
+      <div id="dash-filter-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- Recherche -->
+    <div style="margin-bottom:12px">
+      <input type="text" id="dash-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="dashSearch=this.value;renderDashboardList()" value="${esc(dashSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+    </div>
+
+    <!-- Liste résultats -->
+    <div id="dash-list-container">
+      <div class="skel" style="height:90px;margin-bottom:8px"></div>
+      <div class="skel" style="height:90px;margin-bottom:8px"></div>
+      <div class="skel" style="height:90px;margin-bottom:8px"></div>
+    </div>
+  `;
+
+  requestAnimationFrame(() => requestAnimationFrame(() => renderDashboardList()));
 }
-function renderHierView() {
-  const el = document.getElementById('hier-view');
-  if (!el) return;
-  const { site, bat, etage } = drillState;
-  let html = '';
-  if (!site) {
-    html = Object.keys(HIER).sort().map(s => {
-      const stats = getStatsFor(s, null, null, null);
-      const items = getItemsAt(s, null, null, null);
-      const st = siteStatuts[s] || { statut: 'NON OUVERT' };
-      const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-      return makeProgressRow(s, items, `drillTo('${s}',null,null)`, `<span style="color:${stColor};font-weight:600">${st.statut}</span> · ${stats.total} articles`, false);
-    }).join('');
-  } else if (!bat) {
-    html = Object.keys(HIER[site] || {}).sort().map(b => {
-      const items = getItemsAt(site, b, null, null);
-      return makeProgressRow(b, items, `drillTo('${site}','${b}',null)`, items.length + ' articles', false);
-    }).join('');
-  } else if (!etage) {
-    html = Object.keys((HIER[site] || {})[bat] || {}).sort().map(e => {
-      const items = getItemsAt(site, bat, e, null);
-      const bx = ((HIER[site] || {})[bat] || {})[e] || [];
-      return makeProgressRow(e, items, `drillTo('${site}','${bat}','${e}')`, bx.length + ' bureau(x) · ' + items.length + ' articles', false);
-    }).join('');
-  } else {
-    html = (((HIER[site] || {})[bat] || {})[etage] || []).sort().map(b => {
-      const items = getItemsAt(site, bat, etage, b);
-      const navBtn = items.length ? `<div style="margin:-8px 0 8px;padding:0 14px 10px"><button class="btn btn-sm" style="margin-top:8px;width:100%" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${b}" onclick="navFromDash(this)"><i class="ti ti-arrow-right"></i> Aller à ce bureau</button></div>` : '';
-      return makeProgressRow(b, items, '', items.length + ' article(s)', true) + navBtn;
-    }).join('');
+
+function renderDashboardList() {
+  let data = buildDashBureauData();
+  if (dashSiteFilter !== 'all') data = data.filter(b => b.site === dashSiteFilter);
+
+  // Compteurs par statut
+  const counts = {
+    all: data.length,
+    en_cours: data.filter(b => b.statut === 'EN COURS').length,
+    non_traite: data.filter(b => b.statut === 'NON TRAITE').length,
+    termine: data.filter(b => b.statut === 'TERMINE').length
+  };
+
+  // Filtre par statut
+  let filtered = data;
+  if (dashFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
+  else if (dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE');
+  else if (dashFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
+
+  // Filtre par recherche
+  if (dashSearch && dashSearch.length >= 2) {
+    const q = dashSearch.toLowerCase();
+    filtered = filtered.filter(b =>
+      (b.bureau + ' ' + b.etage + ' ' + b.bat + ' ' + b.site).toLowerCase().includes(q)
+    );
   }
-  el.innerHTML = html || '<div style="text-align:center;padding:30px;color:var(--text2)">Aucun emplacement</div>';
-}
-function makeProgressRow(label, items, onclick, sublabel, isLeaf) {
-  if (!items.length) return '';
-  const inv = items.filter(r => updates[r.cbi]).length;
-  const pct = Math.round(inv / items.length * 100);
-  const filteredCount = getFilteredCount(items);
-  const filterLabel = progressFilter !== 'all' ? ` · <span style="color:var(--accent);font-weight:600">${filteredCount} filtrés</span>` : '';
-  const trouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
-  const nonTrouve = items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
-  const horsSrv = items.filter(r => (updates[r.cbi]?.serv || r.serv) !== 'EN SERVICE').length;
-  const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--info-txt)';
-  return `<div class="hier-row${!isLeaf ? ' clickable' : ''}" ${!isLeaf ? `onclick="${onclick}"` : ''}><div class="hier-row-top"><div class="hier-row-label">${!isLeaf ? '<i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>' : '<i class="ti ti-door" style="font-size:14px;color:var(--text3);flex-shrink:0"></i>'}<div><div style="font-size:14px;font-weight:600">${label}</div>${sublabel ? `<div style="font-size:11px;color:var(--text3)">${sublabel}${filterLabel}</div>` : ''}</div></div><div class="hier-row-stats"><div style="text-align:right"><div style="font-size:15px;font-weight:700;color:${barColor}">${pct}%</div><div style="font-size:11px;color:var(--text3)">${inv}/${items.length}</div></div>${isLeaf ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:80px">${trouve ? `<span style="font-size:11px;color:var(--success-txt)">✓ Trouvés: ${trouve}</span>` : ''}${nonTrouve ? `<span style="font-size:11px;color:var(--danger-txt)">✗ Non trouvés: ${nonTrouve}</span>` : ''}${horsSrv ? `<span style="font-size:11px;color:var(--warn-txt)">⚠ Hors service: ${horsSrv}</span>` : ''}</div>` : ''}</div></div><div style="margin-top:8px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:${barColor}"></div></div></div>${isLeaf && items.length ? `<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${items.filter(r => { if(progressFilter==='all') return true; if(progressFilter==='inventoried') return !!updates[r.cbi]; if(progressFilter==='pending') return !updates[r.cbi]; if(progressFilter==='found') return (updates[r.cbi]?.trouve||'')==='OUI'; if(progressFilter==='notfound') return (updates[r.cbi]?.trouve||'')==='NON'; return true; }).slice(0, 10).map(r => { const ok = !!updates[r.cbi]; const sv = updates[r.cbi]?.serv || r.serv; const dot = ok ? (sv === 'EN SERVICE' ? 'var(--success-txt)' : 'var(--warn-txt)') : 'var(--border2)'; return `<div title="${r.art}" style="width:10px;height:10px;border-radius:50%;background:${dot};flex-shrink:0"></div>`; }).join('')}${filteredCount > 10 ? `<span style="font-size:10px;color:var(--text3)">+${filteredCount - 10}</span>` : ''}</div>` : ''}</div>`;
-}
-function renderByUser() {
-  const byU = {};
-  for (const cbi in updates) { const u = updates[cbi]; byU[u.by] = (byU[u.by] || 0) + 1; }
-  if (!Object.keys(byU).length) return '';
-  const mx = Math.max(...Object.values(byU), 1);
-  return `<div style="margin-top:16px"><div style="font-size:14px;font-weight:700;margin-bottom:10px">Par inventoriste</div><div class="dash-card">${Object.entries(byU).sort((a, b) => b[1] - a[1]).map(([n, cnt]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:14px"><div>${n}</div><div style="display:flex;align-items:center;gap:8px"><div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.round(cnt / mx * 100)}%"></div></div><strong style="min-width:28px;text-align:right">${cnt}</strong></div></div>`).join('')}</div></div>`;
-}
-function setProgressFilter(f) { progressFilter = f; renderDashboard(); }
 
-function getFilteredCount(items) {
-  if (progressFilter === 'all') return items.length;
-  if (progressFilter === 'inventoried') return items.filter(r => updates[r.cbi]).length;
-  if (progressFilter === 'pending') return items.filter(r => !updates[r.cbi]).length;
-  if (progressFilter === 'found') return items.filter(r => (updates[r.cbi]?.trouve || '') === 'OUI').length;
-  if (progressFilter === 'notfound') return items.filter(r => (updates[r.cbi]?.trouve || '') === 'NON').length;
-  return items.length;
+  // Tri : EN COURS par date récente, TERMINE par date récente, NON TRAITE alphabétique
+  filtered.sort((a, b) => {
+    if (a.statut === 'EN COURS' && b.statut === 'EN COURS') return b.lastTs - a.lastTs;
+    if (a.statut === 'TERMINE' && b.statut === 'TERMINE') return b.lastTs - a.lastTs;
+    if (a.statut !== b.statut) {
+      const order = { 'EN COURS': 0, 'NON TRAITE': 1, 'TERMINE': 2 };
+      return (order[a.statut] || 99) - (order[b.statut] || 99);
+    }
+    return (a.site + a.bat + a.bureau).localeCompare(b.site + b.bat + b.bureau);
+  });
+
+  // Mettre à jour les boutons filtre
+  const filterBtns = document.getElementById('dash-filter-btns');
+  if (filterBtns) {
+    const btn = (key, label, color, icon) => {
+      const active = dashFilter === key;
+      const cnt = counts[key];
+      const bg = active ? `background:${color};color:#fff;border-color:${color}` : '';
+      return `<button class="btn btn-sm" style="min-height:34px;font-size:12px;flex:1;min-width:130px;${bg}" onclick="setDashFilter('${key}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${cnt})</span></button>`;
+    };
+    filterBtns.innerHTML = [
+      btn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock'),
+      btn('non_traite', 'Non traités', '#6b7280', 'ti-circle-dashed'),
+      btn('termine', 'Terminés', 'var(--success-txt)', 'ti-circle-check'),
+      btn('all', 'Tous', 'var(--accent)', 'ti-layout-grid'),
+    ].join('');
+  }
+
+  const container = document.getElementById('dash-list-container');
+  if (!container) return;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">
+      <i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>
+      Aucun emplacement ne correspond à ce filtre
+    </div>`;
+    return;
+  }
+
+  // Header avec compteur + bouton aller à l'inventaire
+  const statutLabel = { en_cours: 'en cours', non_traite: 'non traités', termine: 'terminés', all: 'au total' }[dashFilter];
+  const headerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">
+    ${filtered.length} emplacement${filtered.length > 1 ? 's' : ''} ${statutLabel}${dashSiteFilter !== 'all' ? ' à ' + esc(dashSiteFilter) : ''}
+  </div>`;
+
+  container.innerHTML = headerHTML + filtered.map(b => dashBureauCard(b)).join('');
 }
 
-function drillTo(site, bat, etage) { drillState = { site, bat, etage }; renderDashboard(); }
-function navFromDash(btn) { navigateTo(btn.dataset.site, btn.dataset.bat, btn.dataset.etage, btn.dataset.bureau); goView('inventory'); }
+function dashBureauCard(b) {
+  const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : '#6b7280';
+  const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
+  const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : '#6b7280';
+  const statutDisplay = b.statut === 'NON TRAITE' ? 'NON TRAITÉ' : b.statut;
+  return `<div class="dash-bureau-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;margin-bottom:2px">${esc(b.bureau)}</div>
+        <div class="txt-xs">${esc(b.site)} › ${esc(b.bat)} › ${esc(b.etage)}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${statutDisplay}</span>
+      <div style="text-align:right">
+        <div style="font-size:16px;font-weight:800;color:${pctColor}">${b.stats.pct}%</div>
+        <div style="font-size:10px;color:var(--text3)">${b.stats.inv}/${b.stats.total}</div>
+      </div>
+    </div>
+    <div class="pbar" style="height:6px;border-radius:3px;margin-bottom:8px"><div class="pbar-fill" style="width:${b.stats.pct}%;border-radius:3px;background:${pctColor}"></div></div>
+    ${b.lastBy ? `<div class="txt-xs flex-center" style="margin-bottom:8px;color:var(--text2)"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${esc(b.lastBy)}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm btn-primary" style="flex:1;font-size:11px;min-height:28px" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" onclick="dashGoToBureau(this)"><i class="ti ti-clipboard-check" style="font-size:12px"></i> ${b.statut === 'NON TRAITE' ? 'Commencer' : 'Continuer'}</button>
+      ${b.stats.inv > 0 ? `<button class="btn btn-sm" style="font-size:11px;min-height:28px" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" onclick="openBureauArticles(this)" title="Voir les articles inventoriés"><i class="ti ti-list" style="font-size:12px"></i> ${b.stats.inv}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function dashGoToBureau(btn) {
+  navigateTo(btn.dataset.site, btn.dataset.bat, btn.dataset.etage, btn.dataset.bureau);
+  goView('inventory');
+}
 
 // ---------- SIDEBAR & LOCATION NAVIGATION ----------
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('open'); }
@@ -1851,7 +1996,7 @@ function showCodeNotFoundModal(scannedCode) {
     <div class="modal-body">
       <div class="alert alert-warn">
         <i class="ti ti-barcode"></i>
-        <div>Le code barre <strong>${scannedCode}</strong> n'existe pas dans la base.</div>
+        <div>Le code barre <strong>${esc(scannedCode)}</strong> n'existe pas dans la base.</div>
       </div>
       <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">
         Si vous souhaitez l'ajouter comme nouvel article, utilisez le bouton <strong>Ajouter</strong>.<br>
@@ -1859,7 +2004,7 @@ function showCodeNotFoundModal(scannedCode) {
       </div>
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Fermer</button>
-        <button class="btn btn-primary" data-code="${scannedCode}" onclick="closeModal();openAddItem(this.dataset.code)"><i class="ti ti-plus"></i> Ajouter un article</button>
+        <button class="btn btn-primary" data-code="${esc(scannedCode)}" onclick="closeModal();openAddItem(this.dataset.code)"><i class="ti ti-plus"></i> Ajouter un article</button>
       </div>
     </div>`);
 }
@@ -1882,8 +2027,8 @@ function openTransferModal(item) {
       <div class="alert alert-info"><i class="ti ti-info-circle"></i>Cet article est enregistré dans un autre emplacement. Souhaitez-vous le transférer ici et mettre à jour son état ?</div>
       
       <div class="item-box">
-        <div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:8px">${item.fam}</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px">${esc(item.fam)}</div>
         <div>${[
           '<span class="tag"><i class="ti ti-barcode"></i> ' + item.cbi + '</span>',
           item.marque ? '<span class="tag">' + item.marque + '</span>' : '',
@@ -1912,8 +2057,8 @@ function openTransferModal(item) {
       
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
-        <button class="btn" onclick="closeModal();openEditItem_cbi('${item.cbi}')"><i class="ti ti-edit"></i> Modifier sans transférer</button>
-        <button class="btn btn-primary" onclick="confirmTransferAndUpdate('${item.cbi}')"><i class="ti ti-transfer"></i> Transférer et valider</button>
+        <button class="btn" onclick="closeModal();openEditItem_cbi('${esc(item.cbi)}')"><i class="ti ti-edit"></i> Modifier sans transférer</button>
+        <button class="btn btn-primary" onclick="confirmTransferAndUpdate('${esc(item.cbi)}')"><i class="ti ti-transfer"></i> Transférer et valider</button>
       </div>
     </div>`);
 }
@@ -1998,17 +2143,17 @@ function openEditItem(item) {
       }
     }
   }
-  const currentLocVal = `${item.site}|${item.bat}|${item.etage}|${item.bureau}`;
+  const currentLocVal = `${esc(item.site)}|${esc(item.bat)}|${esc(item.etage)}|${esc(item.bureau)}`;
   const locOptions = allLocs.map(l => `<option value="${l.value}"${l.value === currentLocVal ? ' selected' : ''}>${l.label}</option>`).join('');
 
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${item.cbi}</span>`, item.marque ? `<span class="tag">${item.marque}</span>` : '', item.modele ? `<span class="tag">${item.modele}</span>` : '', item.serie ? `<span class="tag">SN: ${item.serie}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${u.by} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div>
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${esc(item.cbi)}</span>`, item.marque ? `<span class="tag">${esc(item.marque)}</span>` : '', item.modele ? `<span class="tag">${esc(item.modele)}</span>` : '', item.serie ? `<span class="tag">SN: ${esc(item.serie)}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${esc(u.by)} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div>
     <!-- Emplacement modifiable -->
     <div class="form-group">
       <label class="form-label"><i class="ti ti-map-pin"></i> Emplacement</label>
       <select id="e-loc" data-original="${currentLocVal}">${locOptions}</select>
       <div id="e-loc-info" style="font-size:11px;color:var(--text3);margin-top:-4px"></div>
     </div>
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${item.cbi}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
   // Listener sur le changement d'emplacement
   setTimeout(() => {
     const locSel = document.getElementById('e-loc');
@@ -2249,15 +2394,15 @@ async function saveNew() {
 }
 function showDoublonModal(type, existing) {
   const loc = [existing.site, existing.bat, existing.etage, existing.bureau].filter(Boolean).join(' › ');
-  const msg = type === 'cbi' ? `Code barre IMMO <strong>${existing.cbi}</strong> déjà existant.` : `Code barre EMP <strong>${existing.cbe}</strong> déjà attribué.`;
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2 style="color:var(--danger-txt)"><i class="ti ti-alert-circle"></i> Doublon</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-danger"><i class="ti ti-alert-circle"></i>${msg}</div><div class="item-box"><div style="font-size:15px;font-weight:700">${existing.art}</div><div style="font-size:13px;color:var(--text2)">${existing.fam}</div><div><span class="tag">CBI: ${existing.cbi}</span>${existing.cbe ? `<span class="tag">CBE: ${existing.cbe}</span>` : ''}</div><div style="margin-top:8px;padding:8px;background:var(--info-bg);border-radius:var(--radius);font-size:13px"><i class="ti ti-map-pin"></i> ${loc}</div>${updates[existing.cbi] ? `<div style="margin-top:6px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> Déjà inventorié par ${updates[existing.cbi].by}</div>` : '<div style="margin-top:6px;font-size:12px;color:var(--warn-txt)"><i class="ti ti-clock"></i> Non encore inventorié</div>'}</div><div class="modal-actions"><button class="btn btn-primary" onclick="closeModal();openEditItem_cbi('${existing.cbi}')"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn" onclick="closeModal()">Fermer</button></div></div>`);
+  const msg = type === 'cbi' ? `Code barre IMMO <strong>${esc(existing.cbi)}</strong> déjà existant.` : `Code barre EMP <strong>${esc(existing.cbe)}</strong> déjà attribué.`;
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2 style="color:var(--danger-txt)"><i class="ti ti-alert-circle"></i> Doublon</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-danger"><i class="ti ti-alert-circle"></i>${msg}</div><div class="item-box"><div style="font-size:15px;font-weight:700">${esc(existing.art)}</div><div style="font-size:13px;color:var(--text2)">${esc(existing.fam)}</div><div><span class="tag">CBI: ${esc(existing.cbi)}</span>${existing.cbe ? `<span class="tag">CBE: ${esc(existing.cbe)}</span>` : ''}</div><div style="margin-top:8px;padding:8px;background:var(--info-bg);border-radius:var(--radius);font-size:13px"><i class="ti ti-map-pin"></i> ${loc}</div>${updates[existing.cbi] ? `<div style="margin-top:6px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> Déjà inventorié par ${updates[existing.cbi].by}</div>` : '<div style="margin-top:6px;font-size:12px;color:var(--warn-txt)"><i class="ti ti-clock"></i> Non encore inventorié</div>'}</div><div class="modal-actions"><button class="btn btn-primary" onclick="closeModal();openEditItem_cbi('${esc(existing.cbi)}')"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn" onclick="closeModal()">Fermer</button></div></div>`);
 }
 
 // ---------- PHOTOS ----------
 function renderPhotoSection(cbi) {
   const list = photos[cbi] || [];
   const thumbs = list.map((p, i) => `<div style="position:relative;display:inline-block;margin:4px"><a href="${p.viewUrl}" target="_blank"><img src="${p.thumbUrl}" alt="photo" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)"></a><button onclick="deletePhoto('${cbi}',${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px">✕</button></div>`).join('');
-  return `<div class="form-group" id="photo-section-${cbi}"><label class="form-label"><i class="ti ti-camera"></i> Photos (${list.length})</label><div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs || '<div style="font-size:12px;color:var(--text3)">Aucune photo</div>'}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label>${!gTok ? '<div style="font-size:11px;color:var(--warn-txt)"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>' : ''}</div></div>`;
+  return `<div class="form-group" id="photo-section-${cbi}"><label class="form-label"><i class="ti ti-camera"></i> Photos (${list.length})</label><div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs || '<div class="txt-12-muted">Aucune photo</div>'}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label>${!gTok ? '<div style="font-size:11px;color:var(--warn-txt)"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>' : ''}</div></div>`;
 }
 async function handlePhotoCapture(event, cbi) { const files = [...event.target.files]; if (!files.length) return; if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; } showToast(`Upload de ${files.length} photo(s)…`, 'info'); try { if (!photos[cbi]) photos[cbi] = []; for (let i = 0; i < files.length; i++) { const result = await uploadPhotoToDrive(files[i], cbi, i + 1); photos[cbi].push(result); } savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photos uploadées', 'success'); } catch(err) { showToast('Erreur upload: ' + err.message, 'danger'); } event.target.value = ''; }
 async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) return; const p = photos[cbi] && photos[cbi][idx]; if (p && gTok && p.id) { try { await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${gTok}` } }); } catch(e) {} } photos[cbi].splice(idx, 1); if (!photos[cbi].length) delete photos[cbi]; savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photo supprimée', 'success'); }
@@ -2287,7 +2432,7 @@ function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'da
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
-function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
+function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); }
 // ─────────────────────────────────────────────────────────────
 //  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
 // ─────────────────────────────────────────────────────────────
@@ -2352,9 +2497,10 @@ function openSuiviPanel() {
 
   const sites = Object.keys(HIER).sort();
   const siteOpts = ['<option value="all">Tous les sites</option>']
-    .concat(sites.map(s => `<option value="${s}" ${suiviSiteFilter === s ? 'selected' : ''}>${s}</option>`))
+    .concat(sites.map(s => `<option value="${esc(s)}" ${suiviSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
 
+  // Afficher la modale immédiatement avec skeleton, puis remplir la liste
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head">
       <h2><i class="ti ti-clipboard-check"></i> Suivi des emplacements</h2>
@@ -2366,7 +2512,7 @@ function openSuiviPanel() {
     <div class="modal-body">
       <!-- Bandeau avancement global -->
       <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="flex-between" style="margin-bottom:8px">
           <div style="font-size:14px;font-weight:700">Avancement global</div>
           <div style="font-size:20px;font-weight:700">${totPct}%</div>
         </div>
@@ -2376,30 +2522,36 @@ function openSuiviPanel() {
 
       <!-- Filtre par site -->
       <div style="margin-bottom:12px">
-        <label class="form-label" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
         <select onchange="setSuiviSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
       </div>
 
       <!-- Filtres par statut -->
       <div style="margin-bottom:12px">
-        <label class="form-label" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">État d'inventaire</label>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">État d'inventaire</label>
         <div id="suivi-filter-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
 
       <!-- Recherche -->
       <div style="margin-bottom:12px">
-        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="suiviSearch=this.value;renderSuiviList()" value="${suiviSearch}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="suiviSearch=this.value;renderSuiviList()" value="${esc(suiviSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
       </div>
 
-      <!-- Liste résultats -->
-      <div id="suivi-list-container"></div>
+      <!-- Skeleton (en attente du calcul) -->
+      <div id="suivi-list-container">
+        <div class="skel" style="height:90px;margin-bottom:8px"></div>
+        <div class="skel" style="height:90px;margin-bottom:8px"></div>
+        <div class="skel" style="height:90px;margin-bottom:8px"></div>
+        <div class="skel" style="height:90px;margin-bottom:8px"></div>
+      </div>
 
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
         <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
       </div>
     </div>`);
 
-  renderSuiviList();
+  // Différer le calcul lourd pour laisser le navigateur peindre les skeletons
+  requestAnimationFrame(() => requestAnimationFrame(() => renderSuiviList()));
 }
 
 function closeSuiviPanel() {
@@ -2487,7 +2639,7 @@ function bureauCard(b) {
     <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;margin-bottom:2px">${b.bureau}</div>
-        <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage}</div>
+        <div class="txt-xs">${b.site} › ${b.bat} › ${b.etage}</div>
       </div>
       <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${b.statut}</span>
       <div style="text-align:right">
@@ -2550,7 +2702,7 @@ async function generateExportFinal() {
 }
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
 function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
-function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${val}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${item.art}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${item.fam}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${item.site}</strong> › ${item.bat} › ${item.etage} › ${item.bureau}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${u.by}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${item.cbi}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${item.site}" data-bat="${item.bat}" data-etage="${item.etage}" data-bureau="${item.bureau}" onclick="navFromDash(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${val}"</div>${cards}`; }
+function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${esc(val)}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${esc(item.site)}</strong> › ${esc(item.bat)} › ${esc(item.etage)} › ${esc(item.bureau)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${esc(u.by)}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${esc(item.cbi)}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${esc(item.site)}" data-bat="${esc(item.bat)}" data-etage="${esc(item.etage)}" data-bureau="${esc(item.bureau)}" onclick="dashGoToBureau(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${esc(val)}"</div>${cards}`; }
 function openEditFromScanLibre(cbi) { const item = findItemByCbi(cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
 
 // ---------- EXCEL LOCAL ----------
