@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 7.0 (Relationnel) -->
+<!-- VERSION 7.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -377,7 +377,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
 <script>
 // ---------- CONFIGURATION ----------
 const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.googleusercontent.com';
-const APP_SHEET_ID  = '13MlNmK4nSTZjGvEar02Trji0vzv97CxAHOOC9fvI-6Y';
+const APP_SHEET_ID  = '1dOkNOh9XBBJzyrS6dd1lrGzt1Rr4Xsg3AYYGDABM5GM';
 
 const USER_NAMES = {
   'mounir.djammal@gmail.com': 'Mounir DJAMMAL',
@@ -646,7 +646,7 @@ async function ensureSheets() {
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
     const hMap = {
-      'Updates': ['cbi','emp_id','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts'],
+      'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts'],
       'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
       'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le']
     };
@@ -668,7 +668,7 @@ async function pullAll() {
       sGet('Familles!A2:B'),
       sGet('Articles!A2:C'),
       sGet('Inventaire!A2:L'),
-      sGet('Updates!A2:I'),
+      sGet('Updates!A2:O'),
       sGet('NouveauxArticles!A2:M'),
       sGet('SuiviSites!A2:H')
     ]);
@@ -735,7 +735,8 @@ async function pullAll() {
     // Updates (avec emp_id potentiellement transféré)
     updates = {};
     for (const r of (updData.values || [])) {
-      const [cbi, emp_id, serv, renouv, obs, trouve, photosCol, by, ts] = r;
+      // 15 colonnes: cbi, emp_id, cbe, site, batiment, etage, bureau, article, etat_service, etat_renouvelabilite, observation, trouve, photos, by, ts
+      const [cbi, emp_id, cbe_col, site_col, bat_col, etage_col, bureau_col, article_col, serv, renouv, obs, trouve, photosCol, by, ts] = r;
       if (!cbi) continue;
       const t = ts ? new Date(ts).getTime() : 0;
       if (!updates[cbi] || t > updates[cbi].ts) {
@@ -846,11 +847,12 @@ function findSiteIdByCode(site_code) {
 async function writeUpd(cbi, u) {
   const item = findItemByCbi(cbi) || {};
   const emp_id = item.emp_id || '';
-  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, ...u } }); return; }
+  const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
+  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); return; }
   try {
-    await sAppend('Updates', [[cbi, emp_id, u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()]]);
+    await sAppend('Updates', [row]);
   } catch(e) {
-    pendingWrites.push({ type: 'u', d: { cbi, emp_id, ...u } });
+    pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } });
   }
 }
 async function writeNI(item) {
@@ -883,7 +885,11 @@ async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
-  if (upd.length) await sAppend('Updates', upd.map(p => { const u = p.d; return [u.cbi, u.emp_id || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()]; }));
+  if (upd.length) await sAppend('Updates', upd.map(p => {
+    const u = p.d;
+    const it = u.item || {};
+    return [u.cbi, u.emp_id || '', it.cbe || '', it.site || '', it.bat || '', it.etage || '', it.bureau || '', it.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
+  }));
   if (ni.length) await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
   pendingWrites = [];
 }
@@ -1947,10 +1953,10 @@ async function confirmTransferAndUpdate(cbi) {
   // 5. Mettre à jour l'état
   updates[cbi] = u;
 
-  // 6. Écrire dans Google Sheets (avec emp_id)
+  // 6. Écrire dans Google Sheets (avec emp_id et libellés)
   if (gTok) {
     try {
-      await sAppend('Updates', [[cbi, newEmpId, u.serv, u.renouv, u.obs, u.trouve, '', u.by, new Date(u.ts).toISOString()]]);
+      await sAppend('Updates', [[cbi, newEmpId, item.cbe || '', item.site, item.bat, item.etage, item.bureau, item.art || '', u.serv, u.renouv, u.obs, u.trouve, '', u.by, new Date(u.ts).toISOString()]]);
     } catch(e) { console.error('Transfer write error', e); }
   }
 
@@ -2127,14 +2133,15 @@ async function updatePhotosInSheet(cbi) {
   const links = (photos[cbi] || []).map(p => p.viewUrl).join('\n');
   const item = findItemByCbi(cbi) || {};
   try {
-    const d = await sGet('Updates!A2:G');
+    const d = await sGet('Updates!A2:A');
     const rows = d.values || [];
     const idx = rows.findIndex(r => r[0] === cbi);
     if (idx >= 0) {
-      await sPut(`Updates!G${idx + 2}`, [[links]]);
+      // Colonne M = photos (13ème colonne)
+      await sPut(`Updates!M${idx + 2}`, [[links]]);
     } else {
       const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() };
-      await sAppend('Updates', [[cbi, item.emp_id || '', u.serv, u.renouv, u.obs || '', u.trouve || '', links, u.by, new Date(u.ts).toISOString()]]);
+      await sAppend('Updates', [[cbi, item.emp_id || '', item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', links, u.by, new Date(u.ts).toISOString()]]);
     }
   } catch(e) { console.error('Photo sheet update error', e); }
 }
@@ -2349,7 +2356,7 @@ function openSuiviPanel() {
     const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
     const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
     const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
-    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+    return `<div class="suivi-bureau-card" data-search="${(b.bureau + ' ' + b.etage + ' ' + b.bat).toLowerCase()}" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:700;margin-bottom:2px">${b.bureau}</div>
@@ -2362,9 +2369,10 @@ function openSuiviPanel() {
         </div>
       </div>
       <div class="pbar" style="height:6px;border-radius:3px;margin-bottom:8px"><div class="pbar-fill" style="width:${b.stats.pct}%;border-radius:3px;background:${pctColor}"></div></div>
-      ${b.lastBy ? `<div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${b.lastBy}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
-      <div style="display:flex;gap:6px;margin-top:8px">
+      ${b.lastBy ? `<div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:8px"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${b.lastBy}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+      <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-primary" style="flex:1;font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="closeModal();setTimeout(()=>resumeInventory(this),100)"><i class="ti ti-clipboard-check" style="font-size:12px"></i> Inventaire</button>
+        ${b.stats.inv > 0 ? `<button class="btn btn-sm" style="font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="openBureauArticles(this)" title="Voir articles inventoriés"><i class="ti ti-list" style="font-size:12px"></i> ${b.stats.inv}</button>` : ''}
       </div>
     </div>`;
   }
@@ -2403,8 +2411,34 @@ function openSuiviPanel() {
         </div>
       </div>
 
-      ${groupedHTML}
+      <div style="margin-bottom:12px">
+        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="filterSuiviBureaux(this.value)" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+      </div>
+
+      <div id="suivi-bureaux-list">${groupedHTML}</div>
     </div>`);
+}
+
+function filterSuiviBureaux(q) {
+  q = (q || '').trim().toLowerCase();
+  const cards = document.querySelectorAll('.suivi-bureau-card');
+  cards.forEach(card => {
+    const txt = card.dataset.search || '';
+    card.style.display = (!q || txt.includes(q)) ? '' : 'none';
+  });
+  // Masquer les titres de groupe vides
+  const list = document.getElementById('suivi-bureaux-list');
+  if (!list) return;
+  const titles = list.querySelectorAll('div[style*="text-transform:uppercase"]');
+  titles.forEach(title => {
+    // Compter les cards visibles après ce titre jusqu'au prochain titre
+    let visible = 0, el = title.nextElementSibling;
+    while (el && !(el.style && el.style.cssText && el.style.cssText.includes('text-transform: uppercase'))) {
+      if (el.classList && el.classList.contains('suivi-bureau-card') && el.style.display !== 'none') visible++;
+      el = el.nextElementSibling;
+    }
+    title.style.display = visible > 0 ? '' : 'none';
+  });
 }
 function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
 async function changeSiteStatut(site, statut) {
