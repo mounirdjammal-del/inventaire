@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 7.2 -->
+<!-- VERSION 7.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -375,19 +375,33 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
 <div id="modal"></div>
 
 <script>
+// ---------- HELPERS SÉCURITÉ ----------
+// Échappe les caractères dangereux pour injection dans innerHTML
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[m]));
+}
+
 // ---------- CONFIGURATION ----------
 const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.googleusercontent.com';
 const APP_SHEET_ID  = '13MlNmK4nSTZjGvEar02Trji0vzv97CxAHOOC9fvI-6Y';
 
 const USER_NAMES = {
   'mounir.djammal@gmail.com': 'Mounir DJAMMAL',
+  'operateurmafintec2@gmail.com': 'Opérateur Mafintec 2',
+  'operateurmafintec3@gmail.com': 'Opérateur Mafintec 3',
+  'operateurmafintec4@gmail.com': 'Opérateur Mafintec 4',
   'operateurmafintec5@gmail.com': 'Nadir Chaqour'
 };
 
-// Tous les utilisateurs Google connectés sont administrateurs (aucune restriction)
 // ─── GESTION DES RÔLES ───────────────────────────────────────
 const ROLES = {
   'mounir.djammal@gmail.com': 'admin',
+  'operateurmafintec2@gmail.com': 'user',
+  'operateurmafintec3@gmail.com': 'user',
+  'operateurmafintec4@gmail.com': 'user',
   'operateurmafintec5@gmail.com': 'user',
 };
 const DEFAULT_ROLE = 'user';
@@ -2061,10 +2075,132 @@ function openAddItem(prefilledCode) {
   const isCbe = prefilledCode && String(prefilledCode).startsWith('31');
   const cbiVal = prefilledCode && !isCbe ? prefilledCode : '';
   const cbeVal = prefilledCode && isCbe ? prefilledCode : '';
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body">${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}${prefilledCode ? `<div class="alert alert-success" style="margin-bottom:14px"><i class="ti ti-barcode"></i><div>Code scanné : <strong>${prefilledCode}</strong> — pré-rempli ci-dessous</div></div>` : ''}<div class="form-row"><div class="form-group"><label class="form-label">Code barre IMMO *</label><input type="text" id="n-cbi" value="${cbiVal}" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)"><div id="n-cbi-msg" style="display:none"></div></div><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="n-cbe" value="${cbeVal}" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)"><div id="n-cbe-msg" style="display:none"></div></div></div><div class="form-row"><div class="form-group"><label class="form-label">Famille *</label><select id="n-fam" onchange="nFamChange()">${Object.keys(FAMS).sort().map(f => `<option>${f}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Article *</label><select id="n-art"></select></div></div><div class="form-row"><div class="form-group"><label class="form-label">Marque</label><input type="text" id="n-marque"></div><div class="form-group"><label class="form-label">Modèle</label><input type="text" id="n-modele"></div></div><div class="form-row"><div class="form-group"><label class="form-label">N° de série</label><input type="text" id="n-serie" inputmode="none"></div><div class="form-group"><label class="form-label">Quantité</label><input type="number" id="n-qty" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="n-sv">${ES.map(x => `<option>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="n-obs" rows="2"></textarea></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button></div></div>`);
-  nFamChange();
+
+  // Liste complète de tous les articles (pour recherche cross-familles)
+  const allArticles = [];
+  for (const f in FAMS) for (const a of FAMS[f]) allArticles.push({ art: a, fam: f });
+  allArticles.sort((a, b) => a.art.localeCompare(b.art));
+
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      ${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}
+      ${prefilledCode ? `<div class="alert alert-success" style="margin-bottom:14px"><i class="ti ti-barcode"></i><div>Code scanné : <strong>${prefilledCode}</strong> — pré-rempli ci-dessous</div></div>` : ''}
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Code barre IMMO *</label>
+          <input type="text" id="n-cbi" value="${cbiVal}" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)">
+          <div id="n-cbi-msg" style="display:none"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Code barre EMP</label>
+          <input type="text" id="n-cbe" value="${cbeVal}" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)">
+          <div id="n-cbe-msg" style="display:none"></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Famille * <span style="font-weight:400;color:var(--text3);font-size:11px">(tapez pour rechercher)</span></label>
+          <input type="text" id="n-fam" list="famList" placeholder="Rechercher une famille…" oninput="nFamInput()" autocomplete="off">
+          <datalist id="famList">${fams.map(f => `<option value="${f}"></option>`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Article * <span style="font-weight:400;color:var(--text3);font-size:11px">(tapez pour rechercher)</span></label>
+          <input type="text" id="n-art" list="artList" placeholder="Rechercher un article…" oninput="nArtInput()" autocomplete="off">
+          <datalist id="artList"></datalist>
+          <div id="n-art-hint" style="font-size:11px;color:var(--text3);margin-top:-4px;display:none"></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Marque</label>
+          <input type="text" id="n-marque">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modèle</label>
+          <input type="text" id="n-modele">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">N° de série</label>
+          <input type="text" id="n-serie" inputmode="none">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quantité</label>
+          <input type="number" id="n-qty" value="1" min="1">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">État de service</label>
+          <select id="n-sv">${ES.map(x => `<option>${x}</option>`).join('')}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Renouvelabilité</label>
+          <select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Observation</label>
+        <textarea id="n-obs" rows="2"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+    </div>`);
+
+  // Stocker la liste complète pour les fonctions oninput
+  window._N_ALL_ARTICLES = allArticles;
+  // Au démarrage, pas de famille sélectionnée → tous les articles disponibles
+  refreshArticleDatalist('');
 }
-function nFamChange() { const f = document.getElementById('n-fam').value; document.getElementById('n-art').innerHTML = (FAMS[f] || []).map(a => `<option>${a}</option>`).join(''); }
+
+// Quand l'utilisateur tape dans Famille : filtrer la datalist des articles
+function nFamInput() {
+  const famVal = document.getElementById('n-fam').value.trim();
+  refreshArticleDatalist(famVal);
+}
+
+// Quand l'utilisateur tape dans Article : auto-détecter la famille
+function nArtInput() {
+  const artVal = document.getElementById('n-art').value.trim();
+  const hint = document.getElementById('n-art-hint');
+  if (!artVal) { if (hint) hint.style.display = 'none'; return; }
+  // Si l'article tapé correspond exactement à un article connu, auto-remplir la famille
+  const all = window._N_ALL_ARTICLES || [];
+  const exact = all.find(x => x.art.toLowerCase() === artVal.toLowerCase());
+  if (exact) {
+    document.getElementById('n-fam').value = exact.fam;
+    if (hint) { hint.style.display = 'block'; hint.style.color = 'var(--success-txt)'; hint.innerHTML = `✓ Famille auto-renseignée : <strong>${exact.fam}</strong>`; }
+  } else {
+    if (hint) { hint.style.display = 'block'; hint.style.color = 'var(--warn-txt)'; hint.innerHTML = `⚠ Nouvel article — saisissez aussi la famille`; }
+  }
+}
+
+// Met à jour la datalist articles selon la famille (vide = tous)
+function refreshArticleDatalist(famVal) {
+  const dl = document.getElementById('artList');
+  if (!dl) return;
+  const all = window._N_ALL_ARTICLES || [];
+  let opts = [];
+  if (famVal && FAMS[famVal]) {
+    // Famille connue : afficher uniquement ses articles
+    opts = FAMS[famVal].map(a => `<option value="${a}"></option>`);
+  } else {
+    // Pas de famille ou famille inconnue : afficher tous les articles avec leur famille en label
+    opts = all.map(x => `<option value="${x.art}">${x.fam}</option>`);
+  }
+  dl.innerHTML = opts.join('');
+}
 function checkCbiField(inp) { const cbi = inp.value.trim(); const msg = document.getElementById('n-cbi-msg'); if (!cbi || !msg) return; const exist = findItemByCbi(cbi); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà existant : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
 function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = findItemByCbe(cbe); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà attribué : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
 async function saveNew() {
@@ -2152,23 +2288,15 @@ function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { con
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
 function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); showToast('Réinitialisé', 'success'); }
-let suiviFilter = 'all'; // all | en_cours | non_ouvert | termine
-let suiviDrillSite = null; // null = vue sites, sinon code du site
+// ─────────────────────────────────────────────────────────────
+//  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
+// ─────────────────────────────────────────────────────────────
+let suiviFilter = 'en_cours';   // en_cours | non_ouvert | termine | all
+let suiviSiteFilter = 'all';    // filtre supplémentaire par site
+let suiviSearch = '';           // recherche texte
 
-function setSuiviFilter(f) {
-  suiviFilter = f;
-  openSuiviPanel();
-}
-function suiviDrillTo(site) {
-  suiviDrillSite = site;
-  suiviFilter = 'all';
-  openSuiviPanel();
-}
-function suiviBackToSites() {
-  suiviDrillSite = null;
-  suiviFilter = 'all';
-  openSuiviPanel();
-}
+function setSuiviFilter(f) { suiviFilter = f; renderSuiviList(); }
+function setSuiviSiteFilter(s) { suiviSiteFilter = s; renderSuiviList(); }
 
 // Statut d'un bureau calculé d'après son % d'inventaire
 function getBureauStatut(site, bat, etage, bureau) {
@@ -2188,6 +2316,24 @@ function getBureauLastInfo(site, bat, etage, bureau) {
   return { lastTs, lastBy };
 }
 
+// Construction de la liste de TOUS les bureaux avec leurs stats
+function buildAllBureauData() {
+  const data = [];
+  for (const site of Object.keys(HIER).sort()) {
+    for (const bat of Object.keys(HIER[site]).sort()) {
+      for (const etage of Object.keys(HIER[site][bat]).sort()) {
+        for (const bureau of HIER[site][bat][etage]) {
+          const stats = getStatsFor(site, bat, etage, bureau);
+          const statut = getBureauStatut(site, bat, etage, bureau);
+          const info = getBureauLastInfo(site, bat, etage, bureau);
+          data.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
+        }
+      }
+    }
+  }
+  return data;
+}
+
 function openSuiviPanel() {
   if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; }
   if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
@@ -2196,250 +2342,168 @@ function openSuiviPanel() {
   const totInv = Object.keys(updates).length;
   const totPct = totAll ? Math.round(totInv / totAll * 100) : 0;
 
-  // ═══════════════════════════════════════════════════════
-  // VUE 1 : LISTE DES SITES (vue par défaut)
-  // ═══════════════════════════════════════════════════════
-  if (!suiviDrillSite) {
-    const sites = Object.keys(HIER).sort();
-    const siteData = sites.map(site => {
-      const allItems = getItemsAt(site, null, null, null);
-      const inv = allItems.filter(r => updates[r.cbi]).length;
-      const pct = allItems.length ? Math.round(inv / allItems.length * 100) : 0;
-      const st = siteStatuts[site] || { statut: 'NON OUVERT' };
-      return { site, allItems, inv, pct, st };
-    });
-
-    const counts = {
-      all: siteData.length,
-      en_cours: siteData.filter(s => s.st.statut === 'EN COURS').length,
-      non_ouvert: siteData.filter(s => s.st.statut === 'NON OUVERT').length,
-      termine: siteData.filter(s => s.st.statut === 'TERMINE').length
-    };
-
-    let filtered = siteData;
-    if (suiviFilter !== 'all') {
-      const statutTarget = suiviFilter === 'en_cours' ? 'EN COURS' : suiviFilter === 'non_ouvert' ? 'NON OUVERT' : 'TERMINE';
-      filtered = siteData.filter(s => s.st.statut === statutTarget);
-    }
-
-    const rows = filtered.map(({ site, allItems, inv, pct, st }) => {
-      const stColor = st.statut === 'TERMINE' ? 'var(--success-txt)' : st.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-      const dotCls = st.statut === 'TERMINE' ? 'dot-ok' : st.statut === 'EN COURS' ? 'dot-ec' : 'dot-no';
-      const opts = STATUTS_SITE.map(s => `<option value="${s}" ${st.statut === s ? 'selected' : ''}>${s}</option>`).join('');
-      return `<div class="site-card" style="cursor:pointer" onclick="if(event.target.tagName!=='SELECT'&&event.target.tagName!=='OPTION')suiviDrillTo('${site}')">
-        <div class="statut-dot ${dotCls}"></div>
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <div style="font-size:15px;font-weight:700">${site}</div>
-            <i class="ti ti-chevron-right" style="font-size:14px;color:var(--text3);margin-left:auto"></i>
-          </div>
-          <div style="font-size:12px;color:var(--text2)">${allItems.length} articles · ${inv} inventoriés · <strong>${pct}%</strong></div>
-          <div style="margin-top:6px"><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></div>
-          ${st.by ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${st.by} — ${st.dateMaj}</div>` : ''}
-        </div>
-        <div class="site-statut" onclick="event.stopPropagation()"><select data-site="${site}" onchange="changeSiteStatutEl(this)" style="color:${stColor};font-weight:600">${opts}</select></div>
-      </div>`;
-    }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun site ne correspond à ce filtre</div>';
-
-    const filterBtn = (key, label, color, icon) => {
-      const active = suiviFilter === key;
-      const cnt = counts[key];
-      return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} (${cnt})</button>`;
-    };
-
-    showModal(`<div class="modal-drag"></div>
-      <div class="modal-head">
-        <h2><i class="ti ti-chart-bar"></i> Suivi inventaire</h2>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button>
-          <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
-        </div>
-      </div>
-      <div class="modal-body">
-        <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-size:14px;font-weight:700">Avancement global</div>
-            <div style="font-size:20px;font-weight:700">${totPct}%</div>
-          </div>
-          <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
-          <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
-        </div>
-
-        <div style="margin-bottom:14px">
-          <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer par statut</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${filterBtn('all', 'Tous', 'var(--accent)', 'ti-layout-grid')}
-            ${filterBtn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock')}
-            ${filterBtn('non_ouvert', 'Non ouvert', '#9ca3af', 'ti-circle-dashed')}
-            ${filterBtn('termine', 'Terminé', 'var(--success-txt)', 'ti-circle-check')}
-          </div>
-        </div>
-
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px"><i class="ti ti-info-circle"></i> Cliquez sur un site pour voir le détail par bureau</div>
-        ${rows}
-
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-          <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
-        </div>
-      </div>`);
-    return;
+  // Reset des filtres à chaque ouverture (sauf si on est juste en train de re-render)
+  if (!window._suiviOpen) {
+    suiviFilter = 'en_cours';
+    suiviSiteFilter = 'all';
+    suiviSearch = '';
   }
+  window._suiviOpen = true;
 
-  // ═══════════════════════════════════════════════════════
-  // VUE 2 : DÉTAIL PAR BUREAU (drill-down sur un site)
-  // ═══════════════════════════════════════════════════════
-  const site = suiviDrillSite;
-  if (!HIER[site]) { suiviBackToSites(); return; }
-
-  // Construire la liste de tous les bureaux du site
-  const bureauData = [];
-  for (const bat of Object.keys(HIER[site]).sort()) {
-    for (const etage of Object.keys(HIER[site][bat]).sort()) {
-      for (const bureau of HIER[site][bat][etage]) {
-        const stats = getStatsFor(site, bat, etage, bureau);
-        const statut = getBureauStatut(site, bat, etage, bureau);
-        const info = getBureauLastInfo(site, bat, etage, bureau);
-        bureauData.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
-      }
-    }
-  }
-
-  const counts = {
-    all: bureauData.length,
-    en_cours: bureauData.filter(b => b.statut === 'EN COURS').length,
-    non_ouvert: bureauData.filter(b => b.statut === 'NON OUVERT').length,
-    termine: bureauData.filter(b => b.statut === 'TERMINE').length
-  };
-
-  // Filtrer selon le filtre actif
-  let filtered = bureauData;
-  if (suiviFilter === 'en_cours') filtered = bureauData.filter(b => b.statut === 'EN COURS');
-  else if (suiviFilter === 'non_ouvert') filtered = bureauData.filter(b => b.statut === 'NON OUVERT');
-  else if (suiviFilter === 'termine') filtered = bureauData.filter(b => b.statut === 'TERMINE');
-
-  // Trier : EN COURS en premier (plus utile), puis par % décroissant
-  filtered.sort((a, b) => {
-    const order = { 'EN COURS': 0, 'NON OUVERT': 1, 'TERMINE': 2 };
-    if (order[a.statut] !== order[b.statut]) return order[a.statut] - order[b.statut];
-    if (a.statut === 'EN COURS') return b.lastTs - a.lastTs; // En cours: plus récent en premier
-    return b.stats.pct - a.stats.pct;
-  });
-
-  // Stats globales du site
-  const siteAll = getItemsAt(site, null, null, null);
-  const siteInv = siteAll.filter(r => updates[r.cbi]).length;
-  const sitePct = siteAll.length ? Math.round(siteInv / siteAll.length * 100) : 0;
-
-  // Grouper par bâtiment
-  const groupedHTML = (() => {
-    if (!filtered.length) {
-      return '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun bureau ne correspond à ce filtre</div>';
-    }
-    // Si filtre actif, ne pas grouper par bâtiment, juste lister
-    if (suiviFilter !== 'all') {
-      return filtered.map(b => bureauCard(b)).join('');
-    }
-    // Sinon grouper par bâtiment+étage
-    const byBat = {};
-    for (const b of filtered) {
-      const key = b.bat + ' › ' + b.etage;
-      if (!byBat[key]) byBat[key] = [];
-      byBat[key].push(b);
-    }
-    return Object.keys(byBat).sort().map(key => `
-      <div style="font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em">${key}</div>
-      ${byBat[key].map(b => bureauCard(b)).join('')}
-    `).join('');
-  })();
-
-  function bureauCard(b) {
-    const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : 'var(--text3)';
-    const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
-    const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
-    return `<div class="suivi-bureau-card" data-search="${(b.bureau + ' ' + b.etage + ' ' + b.bat).toLowerCase()}" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${b.bureau}</div>
-          <div style="font-size:11px;color:var(--text3)">${b.etage}</div>
-        </div>
-        <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${b.statut}</span>
-        <div style="text-align:right">
-          <div style="font-size:16px;font-weight:800;color:${pctColor}">${b.stats.pct}%</div>
-          <div style="font-size:10px;color:var(--text3)">${b.stats.inv}/${b.stats.total}</div>
-        </div>
-      </div>
-      <div class="pbar" style="height:6px;border-radius:3px;margin-bottom:8px"><div class="pbar-fill" style="width:${b.stats.pct}%;border-radius:3px;background:${pctColor}"></div></div>
-      ${b.lastBy ? `<div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:8px"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${b.lastBy}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-primary" style="flex:1;font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="closeModal();setTimeout(()=>resumeInventory(this),100)"><i class="ti ti-clipboard-check" style="font-size:12px"></i> Inventaire</button>
-        ${b.stats.inv > 0 ? `<button class="btn btn-sm" style="font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="openBureauArticles(this)" title="Voir articles inventoriés"><i class="ti ti-list" style="font-size:12px"></i> ${b.stats.inv}</button>` : ''}
-      </div>
-    </div>`;
-  }
-
-  const filterBtn = (key, label, color, icon) => {
-    const active = suiviFilter === key;
-    const cnt = counts[key];
-    return `<button class="btn btn-sm" style="min-height:32px;font-size:12px;${active ? 'background:'+color+';color:#fff;border-color:'+color : ''}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} (${cnt})</button>`;
-  };
+  const sites = Object.keys(HIER).sort();
+  const siteOpts = ['<option value="all">Tous les sites</option>']
+    .concat(sites.map(s => `<option value="${s}" ${suiviSiteFilter === s ? 'selected' : ''}>${s}</option>`))
+    .join('');
 
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head">
-      <h2 style="display:flex;align-items:center;gap:8px">
-        <button class="btn btn-sm" onclick="suiviBackToSites()" title="Retour"><i class="ti ti-arrow-left"></i></button>
-        <span><i class="ti ti-building"></i> ${site}</span>
-      </h2>
-      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+      <h2><i class="ti ti-clipboard-check"></i> Suivi des emplacements</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="generateExportFinal()" title="Générer export final"><i class="ti ti-table-export"></i></button>
+        <button class="btn btn-sm" onclick="closeSuiviPanel()"><i class="ti ti-x"></i></button>
+      </div>
     </div>
     <div class="modal-body">
-      <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+      <!-- Bandeau avancement global -->
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:14px;font-weight:700">Avancement ${site}</div>
-          <div style="font-size:20px;font-weight:700">${sitePct}%</div>
+          <div style="font-size:14px;font-weight:700">Avancement global</div>
+          <div style="font-size:20px;font-weight:700">${totPct}%</div>
         </div>
-        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${sitePct}%;border-radius:5px"></div></div>
-        <div style="font-size:12px;color:var(--text2);margin-top:6px">${siteInv.toLocaleString('fr-FR')} / ${siteAll.length.toLocaleString('fr-FR')} articles · ${bureauData.length} bureaux</div>
+        <div class="pbar" style="height:10px;border-radius:5px"><div class="pbar-fill" style="width:${totPct}%;border-radius:5px"></div></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:6px">${totInv.toLocaleString('fr-FR')} / ${totAll.toLocaleString('fr-FR')} articles inventoriés</div>
       </div>
 
-      <div style="margin-bottom:14px">
-        <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Filtrer les bureaux</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${filterBtn('all', 'Tous', 'var(--accent)', 'ti-layout-grid')}
-          ${filterBtn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock')}
-          ${filterBtn('non_ouvert', 'Non ouvert', '#9ca3af', 'ti-circle-dashed')}
-          ${filterBtn('termine', 'Terminé', 'var(--success-txt)', 'ti-circle-check')}
-        </div>
-      </div>
-
+      <!-- Filtre par site -->
       <div style="margin-bottom:12px">
-        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="filterSuiviBureaux(this.value)" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+        <label class="form-label" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
+        <select onchange="setSuiviSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
       </div>
 
-      <div id="suivi-bureaux-list">${groupedHTML}</div>
+      <!-- Filtres par statut -->
+      <div style="margin-bottom:12px">
+        <label class="form-label" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">État d'inventaire</label>
+        <div id="suivi-filter-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+
+      <!-- Recherche -->
+      <div style="margin-bottom:12px">
+        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="suiviSearch=this.value;renderSuiviList()" value="${suiviSearch}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+      </div>
+
+      <!-- Liste résultats -->
+      <div id="suivi-list-container"></div>
+
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <button class="btn btn-block" onclick="generateExportFinal()"><i class="ti ti-table-export"></i> Générer export final dans Google Sheets</button>
+      </div>
     </div>`);
+
+  renderSuiviList();
 }
 
-function filterSuiviBureaux(q) {
-  q = (q || '').trim().toLowerCase();
-  const cards = document.querySelectorAll('.suivi-bureau-card');
-  cards.forEach(card => {
-    const txt = card.dataset.search || '';
-    card.style.display = (!q || txt.includes(q)) ? '' : 'none';
-  });
-  // Masquer les titres de groupe vides
-  const list = document.getElementById('suivi-bureaux-list');
-  if (!list) return;
-  const titles = list.querySelectorAll('div[style*="text-transform:uppercase"]');
-  titles.forEach(title => {
-    // Compter les cards visibles après ce titre jusqu'au prochain titre
-    let visible = 0, el = title.nextElementSibling;
-    while (el && !(el.style && el.style.cssText && el.style.cssText.includes('text-transform: uppercase'))) {
-      if (el.classList && el.classList.contains('suivi-bureau-card') && el.style.display !== 'none') visible++;
-      el = el.nextElementSibling;
-    }
-    title.style.display = visible > 0 ? '' : 'none';
-  });
+function closeSuiviPanel() {
+  window._suiviOpen = false;
+  closeModal();
 }
+
+function renderSuiviList() {
+  // Construire la liste filtrée
+  let data = buildAllBureauData();
+  // Filtre par site
+  if (suiviSiteFilter !== 'all') data = data.filter(b => b.site === suiviSiteFilter);
+
+  // Compteurs par statut
+  const counts = {
+    all: data.length,
+    en_cours: data.filter(b => b.statut === 'EN COURS').length,
+    non_ouvert: data.filter(b => b.statut === 'NON OUVERT').length,
+    termine: data.filter(b => b.statut === 'TERMINE').length
+  };
+
+  // Filtre par statut
+  let filtered = data;
+  if (suiviFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
+  else if (suiviFilter === 'non_ouvert') filtered = data.filter(b => b.statut === 'NON OUVERT');
+  else if (suiviFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
+
+  // Filtre par recherche
+  if (suiviSearch && suiviSearch.length >= 2) {
+    const q = suiviSearch.toLowerCase();
+    filtered = filtered.filter(b =>
+      (b.bureau + ' ' + b.etage + ' ' + b.bat + ' ' + b.site).toLowerCase().includes(q)
+    );
+  }
+
+  // Tri : EN COURS par date desc, puis par % asc (les moins avancés d'abord)
+  filtered.sort((a, b) => {
+    if (a.statut === 'EN COURS' && b.statut === 'EN COURS') return b.lastTs - a.lastTs;
+    return a.stats.pct - b.stats.pct;
+  });
+
+  // Mettre à jour les boutons filtre avec compteurs
+  const filterBtns = document.getElementById('suivi-filter-btns');
+  if (filterBtns) {
+    const btn = (key, label, color, icon) => {
+      const active = suiviFilter === key;
+      const cnt = counts[key];
+      const bg = active ? `background:${color};color:#fff;border-color:${color}` : '';
+      return `<button class="btn btn-sm" style="min-height:34px;font-size:12px;flex:1;min-width:130px;${bg}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${cnt})</span></button>`;
+    };
+    filterBtns.innerHTML = [
+      btn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock'),
+      btn('non_ouvert', 'Non inventoriés', '#6b7280', 'ti-circle-dashed'),
+      btn('termine', 'Terminés', 'var(--success-txt)', 'ti-circle-check'),
+      btn('all', 'Tous', 'var(--accent)', 'ti-layout-grid'),
+    ].join('');
+  }
+
+  // Rendu de la liste
+  const container = document.getElementById('suivi-list-container');
+  if (!container) return;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">
+      <i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>
+      Aucun bureau ne correspond à ce filtre
+    </div>`;
+    return;
+  }
+
+  // Header avec compteur
+  const statutLabel = { en_cours: 'en cours', non_ouvert: 'non inventoriés', termine: 'terminés', all: 'au total' }[suiviFilter];
+  const headerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">
+    ${filtered.length} bureau${filtered.length > 1 ? 'x' : ''} ${statutLabel}${suiviSiteFilter !== 'all' ? ' à ' + suiviSiteFilter : ''}
+  </div>`;
+
+  container.innerHTML = headerHTML + filtered.map(b => bureauCard(b)).join('');
+}
+
+function bureauCard(b) {
+  const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : '#6b7280';
+  const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
+  const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : '#6b7280';
+  return `<div class="suivi-bureau-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;margin-bottom:2px">${b.bureau}</div>
+        <div style="font-size:11px;color:var(--text3)">${b.site} › ${b.bat} › ${b.etage}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${b.statut}</span>
+      <div style="text-align:right">
+        <div style="font-size:16px;font-weight:800;color:${pctColor}">${b.stats.pct}%</div>
+        <div style="font-size:10px;color:var(--text3)">${b.stats.inv}/${b.stats.total}</div>
+      </div>
+    </div>
+    <div class="pbar" style="height:6px;border-radius:3px;margin-bottom:8px"><div class="pbar-fill" style="width:${b.stats.pct}%;border-radius:3px;background:${pctColor}"></div></div>
+    ${b.lastBy ? `<div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:8px"><i class="ti ti-user" style="font-size:11px;color:var(--accent)"></i><strong>${b.lastBy}</strong> · <i class="ti ti-clock" style="font-size:10px"></i>${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm btn-primary" style="flex:1;font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="closeSuiviPanel();setTimeout(()=>resumeInventory(this),100)"><i class="ti ti-clipboard-check" style="font-size:12px"></i> ${b.statut === 'NON OUVERT' ? 'Commencer' : 'Continuer'}</button>
+      ${b.stats.inv > 0 ? `<button class="btn btn-sm" style="font-size:11px;min-height:28px" data-site="${b.site}" data-bat="${b.bat}" data-etage="${b.etage}" data-bureau="${b.bureau}" onclick="closeSuiviPanel();setTimeout(()=>openBureauArticles(this),100)" title="Voir les articles inventoriés"><i class="ti ti-list" style="font-size:12px"></i> ${b.stats.inv}</button>` : ''}
+    </div>
+  </div>`;
+}
+
 function changeSiteStatutEl(sel) { changeSiteStatut(sel.dataset.site, sel.value); }
 async function changeSiteStatut(site, statut) {
   await writeSuivi(site, statut);
