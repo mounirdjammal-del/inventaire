@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 9.2 -->
+<!-- VERSION 9.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -564,7 +564,7 @@ let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
-// drillState/progressFilter remplacés par dashFilter/dashSiteFilter/dashSearch (déclarés plus bas)
+// drillState/progressFilter remplacés par UF.dashFilter/UF.dashSiteFilter/UF.dashSearch (déclarés plus bas)
 let currentView = 'inventory';
 let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
 let googleProfile = { name: '', email: '', picture: '' };
@@ -1103,6 +1103,145 @@ async function writeSuivi(site_code, statut) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  GESTIONNAIRE CENTRALISÉ DES FILTRES
+//  - Persistance dans localStorage
+//  - Pas de reset automatique lors des syncs/refreshs
+//  - Reset uniquement manuel ou via changement de vue
+// ─────────────────────────────────────────────────────────────
+const DEFAULT_FILTERS = {
+  dashFilter: 'en_cours',          // Avancement : statut
+  dashSiteFilter: 'all',           // Avancement : site
+  dashSearch: '',                  // Avancement : recherche
+  suiviFilter: 'en_cours',         // Suivi : statut
+  suiviSiteFilter: 'all',          // Suivi : site
+  suiviSearch: '',                 // Suivi : recherche
+  articlesMode: 'ref',             // Articles : ref / biens
+  artFilt: '',                     // Articles biens : filtre statut
+  artSearch: '',                   // Articles biens : recherche
+  refArtFilt: '',                  // Articles ref : famille
+  refArtSearch: '',                // Articles ref : recherche
+  locSearch: '',                   // Emplacements : recherche
+  inventoryFilter: 'all',          // Inventaire : filtre table (Tous/Inv/Non/Trouvés/Non trouvés)
+  activityFilter: 'all',
+  activityUserFilter: 'all'
+};
+
+const FILTERS_KEY = 'invFilters_v1';
+let UF = loadFilters();  // UF = User Filters (état persistant global)
+
+function loadFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || '{}');
+    return Object.assign({}, DEFAULT_FILTERS, saved);
+  } catch(e) { return Object.assign({}, DEFAULT_FILTERS); }
+}
+function saveFilters() {
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(UF)); } catch(e) {}
+}
+function setFilter(key, value) {
+  if (!(key in DEFAULT_FILTERS)) { console.warn('Filtre inconnu:', key); return; }
+  UF[key] = value;
+  saveFilters();
+  // Mettre à jour le badge sur l'icône filtre dans la topbar
+  if (typeof renderTopbarActions === 'function') renderTopbarActions();
+}
+function resetFilters(scope) {
+  // scope = 'all' | 'dash' | 'suivi' | 'articles' | 'activity' | 'locations' | 'inventory'
+  const scopes = {
+    dash: ['UF.dashFilter','UF.dashSiteFilter','UF.dashSearch'],
+    suivi: ['UF.suiviFilter','UF.suiviSiteFilter','UF.suiviSearch'],
+    articles: ['UF.articlesMode','artFilt','artSearch','refArtFilt','refArtSearch'],
+    activity: ['activityFilter','activityUserFilter'],
+    locations: ['locSearch'],
+    inventory: ['inventoryFilter']
+  };
+  if (scope === 'all') {
+    UF = Object.assign({}, DEFAULT_FILTERS);
+  } else if (scopes[scope]) {
+    for (const k of scopes[scope]) UF[k] = DEFAULT_FILTERS[k];
+  }
+  saveFilters();
+  if (typeof renderTopbarActions === 'function') renderTopbarActions();
+}
+
+// Compter combien de filtres sont actifs (différents du défaut)
+function countActiveFilters(scope) {
+  const scopes = {
+    dash: ['UF.dashFilter','UF.dashSiteFilter','UF.dashSearch'],
+    suivi: ['UF.suiviFilter','UF.suiviSiteFilter','UF.suiviSearch'],
+    articles: ['artFilt','artSearch','refArtFilt','refArtSearch'],
+    activity: ['activityFilter','activityUserFilter'],
+    locations: ['locSearch'],
+    inventory: ['inventoryFilter']
+  };
+  const keys = scope === 'all' ? Object.keys(DEFAULT_FILTERS) : (scopes[scope] || []);
+  let n = 0;
+  for (const k of keys) {
+    if (UF[k] !== DEFAULT_FILTERS[k] && UF[k] !== '' && UF[k] !== 'all') n++;
+  }
+  return n;
+}
+
+// Modale de gestion globale des filtres
+function openFiltersPanel() {
+  const total = countActiveFilters('all');
+  const byScope = {
+    'Avancement': countActiveFilters('dash'),
+    'Suivi': countActiveFilters('suivi'),
+    'Articles': countActiveFilters('articles'),
+    'Inventaire': countActiveFilters('inventory'),
+    'Emplacements': countActiveFilters('locations'),
+    'Journal': countActiveFilters('activity')
+  };
+  const scopeKey = { 'Avancement':'dash','Suivi':'suivi','Articles':'articles','Inventaire':'inventory','Emplacements':'locations','Journal':'activity' };
+  const labelMap = { dashFilter:'Statut', dashSiteFilter:'Site', dashSearch:'Recherche',
+                     suiviFilter:'Statut', suiviSiteFilter:'Site', suiviSearch:'Recherche',
+                     articlesMode:'Mode', artFilt:'Filtre', artSearch:'Recherche',
+                     refArtFilt:'Famille', refArtSearch:'Recherche',
+                     locSearch:'Recherche', inventoryFilter:'Filtre',
+                     activityFilter:'Type', activityUserFilter:'Utilisateur' };
+
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-filter"></i> Gestion des filtres</h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom:14px">
+        <i class="ti ti-info-circle"></i>
+        <div>Les filtres sont <strong>persistants</strong> entre les sessions. Ils ne se réinitialisent plus lors des synchronisations automatiques.</div>
+      </div>
+
+      ${total === 0
+        ? '<div style="text-align:center;padding:30px;color:var(--text3)"><i class="ti ti-filter-off" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>Aucun filtre actif</div>'
+        : Object.entries(byScope).filter(([_, n]) => n > 0).map(([name, n]) => `
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:14px;font-weight:700">${name}</div>
+              <button class="btn btn-sm" onclick="resetFilters('${scopeKey[name]}');openFiltersPanel();refreshCurrentView()" style="font-size:11px;min-height:28px"><i class="ti ti-x"></i> Réinitialiser</button>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${Object.entries(UF).filter(([k, v]) => {
+                const inScope = (scopeKey[name] === 'dash' && k.startsWith('dash')) ||
+                                (scopeKey[name] === 'suivi' && k.startsWith('suivi')) ||
+                                (scopeKey[name] === 'articles' && (k.startsWith('art') || k.startsWith('refArt'))) ||
+                                (scopeKey[name] === 'activity' && k.startsWith('activity')) ||
+                                (scopeKey[name] === 'locations' && k.startsWith('loc')) ||
+                                (scopeKey[name] === 'inventory' && k === 'inventoryFilter');
+                return inScope && v !== DEFAULT_FILTERS[k] && v !== '' && v !== 'all';
+              }).map(([k, v]) => `<span style="background:var(--accent-bg);color:var(--accent);padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">${labelMap[k] || k} : ${esc(String(v))}</span>`).join('')}
+            </div>
+          </div>
+        `).join('')
+      }
+
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-block" onclick="if(confirm('Réinitialiser TOUS les filtres ?')){resetFilters('all');closeModal();showToast('Tous les filtres réinitialisés','success');refreshCurrentView();}" style="background:var(--danger-bg);color:var(--danger-txt);border-color:var(--danger-ring)"><i class="ti ti-refresh"></i> Tout réinitialiser</button>
+      </div>
+    </div>`);
+}
+
+// ─────────────────────────────────────────────────────────────
 //  JOURNAL D'ACTIVITÉ
 // ─────────────────────────────────────────────────────────────
 // File d'attente en mémoire pour batcher les écritures (évite trop de requêtes)
@@ -1172,8 +1311,7 @@ async function loadActivityLog() {
   }
 }
 
-let _activityFilter = 'all';
-let _activityUserFilter = 'all';
+// (déplacé dans UF — voir gestionnaire centralisé)
 
 async function openActivityLog() {
   // Squelette immédiat
@@ -1189,7 +1327,7 @@ async function openActivityLog() {
       </div>
       <div id="activity-content" style="display:none">
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-          <select id="actv-filter" onchange="_activityFilter=this.value;renderActivityList()" style="flex:1;min-width:130px">
+          <select id="actv-filter" onchange="UF.activityFilter=this.value;renderActivityList()" style="flex:1;min-width:130px">
             <option value="all">Toutes les actions</option>
             <option value="LOGIN">Connexions</option>
             <option value="INVENTORY">Inventaire</option>
@@ -1198,7 +1336,7 @@ async function openActivityLog() {
             <option value="EXPORT">Exports</option>
             <option value="RESET">Réinitialisations</option>
           </select>
-          <select id="actv-user" onchange="_activityUserFilter=this.value;renderActivityList()" style="flex:1;min-width:130px"></select>
+          <select id="actv-user" onchange="UF.activityUserFilter=this.value;renderActivityList()" style="flex:1;min-width:130px"></select>
         </div>
         <div class="txt-xs" id="actv-count" style="margin-bottom:10px;font-weight:600"></div>
         <div id="activity-list"></div>
@@ -1224,8 +1362,8 @@ function renderActivityList() {
   const entries = window._activityEntries || [];
   let filtered = entries;
   // Filtre par catégorie
-  if (_activityFilter !== 'all') {
-    const cat = _activityFilter;
+  if (UF.activityFilter !== 'all') {
+    const cat = UF.activityFilter;
     const mapping = {
       'LOGIN': ['LOGIN', 'LOGOUT'],
       'INVENTORY': ['INVENTORY', 'TRANSFER'],
@@ -1238,8 +1376,8 @@ function renderActivityList() {
     filtered = filtered.filter(e => allowed.includes(e.action));
   }
   // Filtre par utilisateur
-  if (_activityUserFilter !== 'all') {
-    filtered = filtered.filter(e => e.user === _activityUserFilter);
+  if (UF.activityUserFilter !== 'all') {
+    filtered = filtered.filter(e => e.user === UF.activityUserFilter);
   }
 
   const list = document.getElementById('activity-list');
@@ -1507,10 +1645,7 @@ function goView(view) {
     renderArticlesView();
   } else if (view === 'progress') {
     sidebar.style.display = 'none';
-    dashFilter = 'en_cours';
-    dashSiteFilter = 'all';
-    dashSearch = '';
-    renderDashboard();
+    renderDashboard();  // Pas de reset auto — UF est persistant
   }
 }
 function goViewData(el) { goView(el.dataset.view); }
@@ -1923,7 +2058,7 @@ function renderLocationsView() {
 
     <!-- Recherche texte -->
     <div class="search-row" style="margin-bottom:14px">
-      <input type="text" id="loc-search-text" placeholder="Rechercher un bureau, étage, bâtiment…" oninput="debounceLocSearch()" style="margin:0;flex:1">
+      <input type="text" id="loc-search-text" placeholder="Rechercher un bureau, étage, bâtiment…" value="${esc(UF.locSearch)}" oninput="setFilter('locSearch',this.value);debounceLocSearch()" style="margin:0;flex:1">
       <button class="btn btn-sm" onclick="clearLocSearch()" title="Effacer"><i class="ti ti-x"></i></button>
     </div>
 
@@ -1957,6 +2092,10 @@ function renderLocationsView() {
   html += `</div>`;
   main.innerHTML = html;
   setTimeout(() => document.getElementById('loc-search-scan')?.focus(), 100);
+  // Restaurer la recherche persistée
+  if (UF.locSearch && UF.locSearch.trim().length >= 2) {
+    requestAnimationFrame(() => performLocTextSearch());
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1990,7 +2129,7 @@ function debounceLocSearch() {
 }
 
 function performLocTextSearch() {
-  const q = (document.getElementById('loc-search-text')?.value || '').trim().toLowerCase();
+  const q = (UF.locSearch || '').trim().toLowerCase();
   if (!q || q.length < 2) {
     document.getElementById('loc-search-results').style.display = 'none';
     document.getElementById('loc-sites-list').style.display = '';
@@ -2047,6 +2186,7 @@ function clearLocSearch() {
   const scan = document.getElementById('loc-search-scan');
   if (txt) txt.value = '';
   if (scan) scan.value = '';
+  setFilter('locSearch', '');
   const el = document.getElementById('loc-search-results');
   const listEl = document.getElementById('loc-sites-list');
   if (el) el.style.display = 'none';
@@ -2136,12 +2276,12 @@ function goToInventory(el) {
 
 // ---------- ARTICLES VIEW ----------
 // ---------- VUE ARTICLES (avec bascule Référentiel / Biens physiques) ----------
-let articlesMode = 'ref';    // 'ref' (Référentiel par défaut) | 'biens'
+// (déplacé dans UF — voir gestionnaire centralisé)
 let _artLimit = 50;
 let _refArtLimit = 100;
 
 function setArticlesMode(mode) {
-  articlesMode = mode;
+  setFilter('articlesMode', mode);
   _artLimit = 50;
   _refArtLimit = 100;
   renderArticlesView();
@@ -2250,7 +2390,7 @@ async function saveRefArticle() {
 
 function renderArticlesView() {
   const main = document.getElementById('main');
-  const isRef = articlesMode === 'ref';
+  const isRef = UF.articlesMode === 'ref';
 
   // Statistiques
   const totBiens = DB.length + newItems.filter(r => !r._newLoc).length;
@@ -2258,7 +2398,7 @@ function renderArticlesView() {
   const totFam = Object.keys(REL_FAMS).length;
 
   const toggleBtn = (mode, label, count, icon) => {
-    const active = articlesMode === mode;
+    const active = UF.articlesMode === mode;
     return `<button class="btn btn-sm" style="flex:1;min-height:38px;font-size:12px;${active ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : ''}" onclick="setArticlesMode('${mode}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${count.toLocaleString('fr-FR')})</span></button>`;
   };
 
@@ -2287,13 +2427,13 @@ function renderArticlesView() {
 function renderBiensContent() {
   return `
     <div class="search-row" style="margin-bottom:14px">
-      <input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="debounceFilterArticles()" style="margin:0;flex:1">
-      <select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px">
-        <option value="">Tous</option>
-        <option value="__inv">Inventoriés</option>
-        <option value="__non">Non inventoriés</option>
-        <option value="OUI">Trouvés</option>
-        <option value="NON">Non trouvés</option>
+      <input type="text" id="art-srch" placeholder="Rechercher article, code barre…" value="${esc(UF.artSearch)}" oninput="setFilter('artSearch',this.value);debounceFilterArticles()" style="margin:0;flex:1">
+      <select id="art-filt" onchange="setFilter('artFilt',this.value);filterArticlesView()" style="margin:0;width:150px">
+        <option value="" ${UF.artFilt===''?'selected':''}>Tous</option>
+        <option value="__inv" ${UF.artFilt==='__inv'?'selected':''}>Inventoriés</option>
+        <option value="__non" ${UF.artFilt==='__non'?'selected':''}>Non inventoriés</option>
+        <option value="OUI" ${UF.artFilt==='OUI'?'selected':''}>Trouvés</option>
+        <option value="NON" ${UF.artFilt==='NON'?'selected':''}>Non trouvés</option>
       </select>
     </div>
     <div id="art-list"></div>
@@ -2304,8 +2444,8 @@ function showMoreArticles() { _artLimit += 50; filterArticlesView(); }
 
 function filterArticlesView() {
   const all = getAllItems().filter(r => !r._newLoc);
-  const srch = (document.getElementById('art-srch')?.value || '').toLowerCase();
-  const filt = (document.getElementById('art-filt')?.value || '');
+  const srch = (UF.artSearch || '').toLowerCase();
+  const filt = (UF.artFilt || '');
   let filtered = all.filter(r => {
     if (srch && ![r.cbi, r.cbe, (r.art || '').toLowerCase(), (r.fam || '').toLowerCase()].some(x => x.includes(srch))) return false;
     if (filt === '__inv') return !!updates[r.cbi];
@@ -2341,10 +2481,10 @@ function renderRefArticlesContent(totFam, totRef) {
       <div><div class="txt-xs" style="font-weight:600">Types d'articles</div><div style="font-size:20px;font-weight:700">${totRef.toLocaleString('fr-FR')}</div></div>
     </div>
     <div class="search-row" style="margin-bottom:14px">
-      <input type="text" id="ref-art-srch" placeholder="Rechercher un article ou une famille…" oninput="debounceFilterRefArticles()" style="margin:0;flex:1">
-      <select id="ref-art-filt" onchange="filterRefArticles()" style="margin:0;width:180px">
-        <option value="">Toutes les familles</option>
-        ${fams.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}
+      <input type="text" id="ref-art-srch" placeholder="Rechercher un article ou une famille…" value="${esc(UF.refArtSearch)}" oninput="setFilter('refArtSearch',this.value);debounceFilterRefArticles()" style="margin:0;flex:1">
+      <select id="ref-art-filt" onchange="setFilter('refArtFilt',this.value);filterRefArticles()" style="margin:0;width:180px">
+        <option value="" ${UF.refArtFilt===''?'selected':''}>Toutes les familles</option>
+        ${fams.map(f => `<option value="${esc(f)}" ${UF.refArtFilt===f?'selected':''}>${esc(f)}</option>`).join('')}
       </select>
     </div>
     <div id="ref-art-list"></div>
@@ -2358,8 +2498,8 @@ function showMoreRefArticles() { _refArtLimit += 100; filterRefArticles(); }
 function filterRefArticles() {
   const el = document.getElementById('ref-art-list');
   if (!el) return;
-  const srch = (document.getElementById('ref-art-srch')?.value || '').trim().toLowerCase();
-  const famFilt = document.getElementById('ref-art-filt')?.value || '';
+  const srch = (UF.refArtSearch || '').trim().toLowerCase();
+  const famFilt = UF.refArtFilt || '';
 
   // Compter biens physiques par article_id
   const usageByArt = {};
@@ -2401,12 +2541,10 @@ function filterRefArticles() {
 }
 
 // ---------- DASHBOARD PROGRESS ----------
-let dashFilter = 'en_cours';        // en_cours | non_traite | termine | all
-let dashSiteFilter = 'all';
-let dashSearch = '';
+// (déplacé dans UF — voir gestionnaire centralisé)
 
-function setDashFilter(f) { dashFilter = f; renderDashboardList(); }
-function setDashSiteFilter(s) { dashSiteFilter = s; renderDashboardList(); }
+function setDashFilter(f) { setFilter('dashFilter', f); renderDashboardList(); }
+function setDashSiteFilter(s) { setFilter('dashSiteFilter', s); renderDashboardList(); }
 
 // Statut d'un bureau d'après son avancement
 function getBureauDashStatut(stats) {
@@ -2444,7 +2582,7 @@ function renderDashboard() {
 
   const sites = Object.keys(HIER).sort();
   const siteOpts = ['<option value="all">Tous les sites</option>']
-    .concat(sites.map(s => `<option value="${esc(s)}" ${dashSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
+    .concat(sites.map(s => `<option value="${esc(s)}" ${UF.dashSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
 
   main.innerHTML = `
@@ -2478,7 +2616,7 @@ function renderDashboard() {
 
     <!-- Recherche -->
     <div style="margin-bottom:12px">
-      <input type="text" id="dash-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="dashSearch=this.value;renderDashboardList()" value="${esc(dashSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+      <input type="text" id="dash-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="setFilter('dashSearch',this.value);renderDashboardList()" value="${esc(UF.dashSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
     </div>
 
     <!-- Liste résultats -->
@@ -2494,7 +2632,7 @@ function renderDashboard() {
 
 function renderDashboardList() {
   let data = buildDashBureauData();
-  if (dashSiteFilter !== 'all') data = data.filter(b => b.site === dashSiteFilter);
+  if (UF.dashSiteFilter !== 'all') data = data.filter(b => b.site === UF.dashSiteFilter);
 
   // Compteurs par statut
   const counts = {
@@ -2506,13 +2644,13 @@ function renderDashboardList() {
 
   // Filtre par statut
   let filtered = data;
-  if (dashFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
-  else if (dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE');
-  else if (dashFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
+  if (UF.dashFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
+  else if (UF.dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE');
+  else if (UF.dashFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
 
   // Filtre par recherche
-  if (dashSearch && dashSearch.length >= 2) {
-    const q = dashSearch.toLowerCase();
+  if (UF.dashSearch && UF.dashSearch.length >= 2) {
+    const q = UF.dashSearch.toLowerCase();
     filtered = filtered.filter(b =>
       (b.bureau + ' ' + b.etage + ' ' + b.bat + ' ' + b.site).toLowerCase().includes(q)
     );
@@ -2533,7 +2671,7 @@ function renderDashboardList() {
   const filterBtns = document.getElementById('dash-filter-btns');
   if (filterBtns) {
     const btn = (key, label, color, icon) => {
-      const active = dashFilter === key;
+      const active = UF.dashFilter === key;
       const cnt = counts[key];
       const bg = active ? `background:${color};color:#fff;border-color:${color}` : '';
       return `<button class="btn btn-sm" style="min-height:34px;font-size:12px;flex:1;min-width:130px;${bg}" onclick="setDashFilter('${key}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${cnt})</span></button>`;
@@ -2558,9 +2696,9 @@ function renderDashboardList() {
   }
 
   // Header avec compteur + bouton aller à l'inventaire
-  const statutLabel = { en_cours: 'en cours', non_traite: 'non traités', termine: 'terminés', all: 'au total' }[dashFilter];
+  const statutLabel = { en_cours: 'en cours', non_traite: 'non traités', termine: 'terminés', all: 'au total' }[UF.dashFilter];
   const headerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">
-    ${filtered.length} emplacement${filtered.length > 1 ? 's' : ''} ${statutLabel}${dashSiteFilter !== 'all' ? ' à ' + esc(dashSiteFilter) : ''}
+    ${filtered.length} emplacement${filtered.length > 1 ? 's' : ''} ${statutLabel}${UF.dashSiteFilter !== 'all' ? ' à ' + esc(UF.dashSiteFilter) : ''}
   </div>`;
 
   container.innerHTML = headerHTML + filtered.map(b => dashBureauCard(b)).join('');
@@ -2791,7 +2929,8 @@ function openTransferModal(item) {
       <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
       <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${obs}</textarea></div>
       <div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
-      
+      ${renderPhotoSection(item.cbi)}
+
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
         <button class="btn" onclick="closeModal();openEditItem_cbi('${esc(item.cbi)}')"><i class="ti ti-edit"></i> Modifier sans transférer</button>
@@ -2884,15 +3023,68 @@ function openEditItem(item) {
   const currentLocVal = `${esc(item.site)}|${esc(item.bat)}|${esc(item.etage)}|${esc(item.bureau)}`;
   const locOptions = allLocs.map(l => `<option value="${l.value}"${l.value === currentLocVal ? ' selected' : ''}>${l.label}</option>`).join('');
 
+  // Liste de tous les articles + familles pour recherche
+  const fams = Object.keys(FAMS).sort();
+  const allArticles = [];
+  for (const f in FAMS) for (const a of FAMS[f]) allArticles.push({ art: a, fam: f });
+  allArticles.sort((a, b) => a.art.localeCompare(b.art));
+
   showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Mise à jour</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="item-box"><div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div>${[`<span class="tag"><i class="ti ti-barcode"></i> ${esc(item.cbi)}</span>`, item.marque ? `<span class="tag">${esc(item.marque)}</span>` : '', item.modele ? `<span class="tag">${esc(item.modele)}</span>` : '', item.serie ? `<span class="tag">SN: ${esc(item.serie)}</span>` : ''].filter(Boolean).join('')}</div>${u.by ? `<div style="margin-top:8px;font-size:12px;color:var(--success-txt)"><i class="ti ti-check"></i> ${esc(u.by)} — ${new Date(u.ts).toLocaleDateString('fr-FR')}</div>` : ''}</div>
+
     <!-- Emplacement modifiable -->
     <div class="form-group">
       <label class="form-label"><i class="ti ti-map-pin"></i> Emplacement</label>
       <select id="e-loc" data-original="${currentLocVal}">${locOptions}</select>
       <div id="e-loc-info" style="font-size:11px;color:var(--text3);margin-top:-4px"></div>
     </div>
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${obs}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
-  // Listener sur le changement d'emplacement
+
+    <!-- Modifier les caractéristiques (dépliable) -->
+    <details style="margin-bottom:14px;background:var(--bg2);border-radius:var(--radius);padding:0">
+      <summary style="cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none">
+        <i class="ti ti-edit"></i> Modifier les caractéristiques de l'article
+      </summary>
+      <div style="padding:0 14px 14px;border-top:1px solid var(--border)">
+        <div class="alert alert-info" style="margin:10px 0 14px;font-size:12px">
+          <i class="ti ti-info-circle"></i>
+          <div>Modification du référentiel de cet article (famille, type, marque, modèle, série)</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Famille</label>
+            <input type="text" id="e-fam" list="eFamList" value="${esc(item.fam || '')}" oninput="eFamInput()" autocomplete="off">
+            <datalist id="eFamList">${fams.map(f => `<option value="${esc(f)}"></option>`).join('')}</datalist>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Article</label>
+            <input type="text" id="e-art" list="eArtList" value="${esc(item.art || '')}" oninput="eArtInput()" autocomplete="off">
+            <datalist id="eArtList"></datalist>
+            <div id="e-art-hint" class="txt-xs" style="margin-top:-4px;display:none"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Marque</label>
+            <input type="text" id="e-marque" value="${esc(item.marque || '')}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modèle</label>
+            <input type="text" id="e-modele" value="${esc(item.modele || '')}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° de série</label>
+          <input type="text" id="e-serie" value="${esc(item.serie || '')}" inputmode="none">
+        </div>
+      </div>
+    </details>
+
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+
+  // Stocker la liste complète d'articles pour les datalists dépliables
+  window._E_ALL_ARTICLES = allArticles;
+  refreshEditArticleDatalist(item.fam || '');
+
+  // Listener emplacement
   setTimeout(() => {
     const locSel = document.getElementById('e-loc');
     const locInfo = document.getElementById('e-loc-info');
@@ -2900,7 +3092,7 @@ function openEditItem(item) {
       locSel.onchange = () => {
         if (locSel.value !== locSel.dataset.original) {
           locInfo.style.color = 'var(--warn-txt)';
-          locInfo.innerHTML = '<i class="ti ti-alert-triangle"></i> L’emplacement sera modifié à la validation';
+          locInfo.innerHTML = '<i class="ti ti-alert-triangle"></i> L\u2019emplacement sera modifié à la validation';
         } else {
           locInfo.innerHTML = '';
         }
@@ -2908,13 +3100,96 @@ function openEditItem(item) {
     }
   }, 100);
 }
+
+// Helpers pour les datalists de la section "Modifier caractéristiques"
+function eFamInput() {
+  const famVal = document.getElementById('e-fam').value.trim();
+  refreshEditArticleDatalist(famVal);
+}
+function eArtInput() {
+  const artVal = document.getElementById('e-art').value.trim();
+  const hint = document.getElementById('e-art-hint');
+  if (!artVal || !hint) return;
+  const all = window._E_ALL_ARTICLES || [];
+  const exact = all.find(x => x.art.toLowerCase() === artVal.toLowerCase());
+  if (exact) {
+    document.getElementById('e-fam').value = exact.fam;
+    hint.style.display = 'block';
+    hint.style.color = 'var(--success-txt)';
+    hint.innerHTML = `\u2713 Famille auto-renseignée : <strong>${esc(exact.fam)}</strong>`;
+  } else {
+    hint.style.display = 'block';
+    hint.style.color = 'var(--warn-txt)';
+    hint.innerHTML = `\u26a0 Nouvel article — sera créé dans le référentiel`;
+  }
+}
+function refreshEditArticleDatalist(famVal) {
+  const dl = document.getElementById('eArtList');
+  if (!dl) return;
+  const all = window._E_ALL_ARTICLES || [];
+  let opts = [];
+  if (famVal && FAMS[famVal]) {
+    opts = FAMS[famVal].map(a => `<option value="${esc(a)}"></option>`);
+  } else {
+    opts = all.map(x => `<option value="${esc(x.art)}">${esc(x.fam)}</option>`);
+  }
+  dl.innerHTML = opts.join('');
+}
 async function saveUpd(cbi) {
   const item = findItemByCbi(cbi);
   if (!item) return;
   const trouveEl = document.querySelector('input[name="e-trouve"]:checked');
   const u = { serv: document.getElementById('e-sv').value, renouv: document.getElementById('e-rv').value, obs: document.getElementById('e-obs').value, trouve: trouveEl ? trouveEl.value : '', by: currentUser, ts: Date.now() };
 
-  // Vérifier si l'emplacement a changé
+  // ── 1. Vérifier modifications des CARACTÉRISTIQUES (fam, art, marque, modèle, série) ──
+  const famEl = document.getElementById('e-fam');
+  const artEl = document.getElementById('e-art');
+  if (famEl && artEl) {
+    const newFam = famEl.value.trim();
+    const newArt = artEl.value.trim();
+    const newMarque = document.getElementById('e-marque').value.trim();
+    const newModele = document.getElementById('e-modele').value.trim();
+    const newSerie = document.getElementById('e-serie').value.trim();
+    const charChanged = (newFam !== (item.fam || '') || newArt !== (item.art || '') ||
+                        newMarque !== (item.marque || '') || newModele !== (item.modele || '') ||
+                        newSerie !== (item.serie || ''));
+    if (charChanged && newFam && newArt) {
+      // Créer la famille si nouvelle
+      let famille_id = null;
+      for (const fid in REL_FAMS) if (REL_FAMS[fid].famille_nom === newFam) { famille_id = fid; break; }
+      if (!famille_id) {
+        famille_id = 'F' + String(Object.keys(REL_FAMS).length + 1).padStart(3, '0');
+        REL_FAMS[famille_id] = { famille_id, famille_nom: newFam };
+        if (!FAMS[newFam]) FAMS[newFam] = [];
+        if (gTok) { try { await sAppend('Familles', [[famille_id, newFam]]); } catch(e) {} }
+      }
+      // Créer l'article si nouveau
+      let article_id = null;
+      for (const aid in REL_ARTS) if (REL_ARTS[aid].article_nom === newArt && REL_ARTS[aid].famille_id === famille_id) { article_id = aid; break; }
+      if (!article_id) {
+        article_id = 'A' + String(Object.keys(REL_ARTS).length + 1).padStart(4, '0');
+        REL_ARTS[article_id] = { article_id, article_nom: newArt, famille_id, famille_nom: newFam };
+        if (!FAMS[newFam].includes(newArt)) FAMS[newFam].push(newArt);
+        if (gTok) { try { await sAppend('Articles', [[article_id, newArt, famille_id]]); } catch(e) {} }
+      }
+      // Mettre à jour l'item
+      const oldArt = item.art;
+      item.fam = newFam;
+      item.art = newArt;
+      item.article_id = article_id;
+      item.marque = newMarque;
+      item.modele = newModele;
+      item.serie = newSerie;
+      // Tracer
+      const charNote = `Caractéristiques modifiées (${oldArt} → ${newArt})`;
+      u.obs = u.obs ? u.obs + ' | ' + charNote : charNote;
+      // Mettre à jour la table Inventaire dans Sheets (sur la ligne CBI)
+      try { await updateInventoryRow(item); } catch(e) { console.error('updateInventoryRow', e); }
+      logActivity('EDIT_ITEM', `${oldArt} → ${newArt}${newMarque ? ' / ' + newMarque : ''}${newModele ? ' ' + newModele : ''}`, cbi);
+    }
+  }
+
+  // ── 2. Vérifier si l'emplacement a changé ──
   const locSel = document.getElementById('e-loc');
   if (locSel && locSel.value !== locSel.dataset.original) {
     const [newSite, newBat, newEtage, newBureau] = locSel.value.split('|');
@@ -2951,6 +3226,19 @@ async function saveUpd(cbi) {
   showToast('✓ Article mis à jour', 'success');
   logActivity('INVENTORY', `${item.art || 'Article'} - ${u.serv}${u.trouve ? ' - ' + u.trouve : ''}`, cbi);
   await writeUpd(cbi, u);
+}
+
+// Met à jour la ligne Inventaire dans Sheets (caractéristiques modifiées)
+async function updateInventoryRow(item) {
+  if (!gTok || !gsConf.sheetId) return;
+  // Trouver la ligne par CBI dans Inventaire
+  const d = await sGet('Inventaire!A2:A');
+  const rows = d.values || [];
+  const idx = rows.findIndex(r => r[0] === item.cbi);
+  if (idx < 0) return; // Pas dans Inventaire (probablement un newItem)
+  // Updater colonnes B (article_id), D (marque), E (modèle), F (série)
+  // Schema Inventaire: cbi, article_id, emp_id, marque, modele, serie, num_amendis, quantite, etat_service, etat_renouv, observation, patrimoine
+  await sPut(`Inventaire!B${idx + 2}:F${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '']]);
 }
 function openAddItem(prefilledCode) {
   const fams = Object.keys(FAMS).sort();
@@ -3036,16 +3324,72 @@ function openAddItem(prefilledCode) {
         <textarea id="n-obs" rows="2"></textarea>
       </div>
 
+      <!-- Section photos (collectées en mémoire, uploadées après création) -->
+      <div class="form-group">
+        <label class="form-label"><i class="ti ti-camera"></i> Photos <span id="n-photo-count" class="txt-xs" style="font-weight:400">(0)</span></label>
+        <div id="n-photo-thumbs" style="margin-bottom:8px"><div class="txt-12-muted">Aucune photo</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleNewPhotoCapture(event)"></label>
+          <label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handleNewPhotoCapture(event)"></label>
+        </div>
+        ${!gTok ? '<div class="txt-xs" style="color:var(--warn-txt);margin-top:6px"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder les photos</div>' : ''}
+      </div>
+
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
         <button class="btn btn-primary" onclick="saveNew()"><i class="ti ti-plus"></i> Ajouter</button>
       </div>
     </div>`);
 
+  // Réinitialiser le buffer de photos
+  window._newItemPhotos = [];
   // Stocker la liste complète pour les fonctions oninput
   window._N_ALL_ARTICLES = allArticles;
   // Au démarrage, pas de famille sélectionnée → tous les articles disponibles
   refreshArticleDatalist('');
+}
+
+// Gestion des photos en attente pour le nouvel article (avant qu'il ait un CBI)
+async function handleNewPhotoCapture(event) {
+  const files = [...event.target.files];
+  if (!files.length) return;
+  if (!window._newItemPhotos) window._newItemPhotos = [];
+  // Compresser et stocker en mémoire (Blob)
+  for (const file of files) {
+    try {
+      const compressed = await compressImage(file, 1200, 0.82);
+      const previewUrl = URL.createObjectURL(compressed);
+      window._newItemPhotos.push({ blob: compressed, previewUrl, name: file.name });
+    } catch(e) { console.error('Compression photo', e); }
+  }
+  renderNewItemPhotoThumbs();
+  event.target.value = '';
+}
+
+function renderNewItemPhotoThumbs() {
+  const wrap = document.getElementById('n-photo-thumbs');
+  const cnt = document.getElementById('n-photo-count');
+  if (!wrap) return;
+  const list = window._newItemPhotos || [];
+  if (cnt) cnt.textContent = `(${list.length})`;
+  if (!list.length) {
+    wrap.innerHTML = '<div class="txt-12-muted">Aucune photo</div>';
+    return;
+  }
+  wrap.innerHTML = list.map((p, i) =>
+    `<div style="position:relative;display:inline-block;margin:4px">
+      <img src="${p.previewUrl}" alt="photo" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)">
+      <button onclick="removeNewItemPhoto(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px">✕</button>
+    </div>`
+  ).join('');
+}
+
+function removeNewItemPhoto(idx) {
+  if (!window._newItemPhotos) return;
+  const p = window._newItemPhotos[idx];
+  if (p && p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+  window._newItemPhotos.splice(idx, 1);
+  renderNewItemPhotoThumbs();
 }
 
 // Quand l'utilisateur tape dans Famille : filtrer la datalist des articles
@@ -3165,6 +3509,32 @@ async function saveNew() {
   logActivity('ADD_ITEM', `${artNom} (${famNom}) - ${curLoc.bureau}`, cbi);
   await writeNI(item);
   await writeUpd(cbi, updates[cbi]);
+
+  // ── Upload des photos collectées pendant l'ajout ──
+  const pendingPhotos = window._newItemPhotos || [];
+  if (pendingPhotos.length && gTok) {
+    showToast(`Upload de ${pendingPhotos.length} photo(s)…`, 'info');
+    try {
+      if (!photos[cbi]) photos[cbi] = [];
+      for (let i = 0; i < pendingPhotos.length; i++) {
+        const p = pendingPhotos[i];
+        // Créer un File à partir du Blob
+        const fileObj = new File([p.blob], p.name || `photo_${i+1}.jpg`, { type: p.blob.type || 'image/jpeg' });
+        const result = await uploadPhotoToDrive(fileObj, cbi, i + 1);
+        photos[cbi].push(result);
+        // Libérer l'URL preview
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+      }
+      savePhotos();
+      await updatePhotosInSheet(cbi);
+      showToast(`✓ ${pendingPhotos.length} photo(s) ajoutée(s)`, 'success');
+    } catch(err) {
+      showToast('Upload photos: ' + err.message, 'danger');
+    }
+  } else if (pendingPhotos.length && !gTok) {
+    showToast('Photos non sauvegardées (Google non connecté)', 'warn');
+  }
+  window._newItemPhotos = [];
 }
 function showDoublonModal(type, existing) {
   const loc = [existing.site, existing.bat, existing.etage, existing.bureau].filter(Boolean).join(' › ');
@@ -3210,12 +3580,10 @@ function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'd
 // ─────────────────────────────────────────────────────────────
 //  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
 // ─────────────────────────────────────────────────────────────
-let suiviFilter = 'en_cours';   // en_cours | non_ouvert | termine | all
-let suiviSiteFilter = 'all';    // filtre supplémentaire par site
-let suiviSearch = '';           // recherche texte
+// (déplacé dans UF — voir gestionnaire centralisé)
 
-function setSuiviFilter(f) { suiviFilter = f; renderSuiviList(); }
-function setSuiviSiteFilter(s) { suiviSiteFilter = s; renderSuiviList(); }
+function setSuiviFilter(f) { setFilter('suiviFilter', f); renderSuiviList(); }
+function setSuiviSiteFilter(s) { setFilter('suiviSiteFilter', s); renderSuiviList(); }
 
 // Statut d'un bureau calculé d'après son % d'inventaire
 function getBureauStatut(site, bat, etage, bureau) {
@@ -3261,17 +3629,11 @@ function openSuiviPanel() {
   const totInv = Object.keys(updates).length;
   const totPct = totAll ? Math.round(totInv / totAll * 100) : 0;
 
-  // Reset des filtres à chaque ouverture (sauf si on est juste en train de re-render)
-  if (!window._suiviOpen) {
-    suiviFilter = 'en_cours';
-    suiviSiteFilter = 'all';
-    suiviSearch = '';
-  }
-  window._suiviOpen = true;
+  window._suiviOpen = true;  // Pas de reset auto — UF est persistant
 
   const sites = Object.keys(HIER).sort();
   const siteOpts = ['<option value="all">Tous les sites</option>']
-    .concat(sites.map(s => `<option value="${esc(s)}" ${suiviSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
+    .concat(sites.map(s => `<option value="${esc(s)}" ${UF.suiviSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
 
   // Afficher la modale immédiatement avec skeleton, puis remplir la liste
@@ -3308,7 +3670,7 @@ function openSuiviPanel() {
 
       <!-- Recherche -->
       <div style="margin-bottom:12px">
-        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="suiviSearch=this.value;renderSuiviList()" value="${esc(suiviSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
+        <input type="text" id="suivi-search" placeholder="🔍 Rechercher un bureau, étage, bâtiment…" oninput="setFilter('suiviSearch',this.value);renderSuiviList()" value="${esc(UF.suiviSearch)}" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);font-size:13px">
       </div>
 
       <!-- Skeleton (en attente du calcul) -->
@@ -3337,7 +3699,7 @@ function renderSuiviList() {
   // Construire la liste filtrée
   let data = buildAllBureauData();
   // Filtre par site
-  if (suiviSiteFilter !== 'all') data = data.filter(b => b.site === suiviSiteFilter);
+  if (UF.suiviSiteFilter !== 'all') data = data.filter(b => b.site === UF.suiviSiteFilter);
 
   // Compteurs par statut
   const counts = {
@@ -3349,13 +3711,13 @@ function renderSuiviList() {
 
   // Filtre par statut
   let filtered = data;
-  if (suiviFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
-  else if (suiviFilter === 'non_ouvert') filtered = data.filter(b => b.statut === 'NON OUVERT');
-  else if (suiviFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
+  if (UF.suiviFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
+  else if (UF.suiviFilter === 'non_ouvert') filtered = data.filter(b => b.statut === 'NON OUVERT');
+  else if (UF.suiviFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
 
   // Filtre par recherche
-  if (suiviSearch && suiviSearch.length >= 2) {
-    const q = suiviSearch.toLowerCase();
+  if (UF.suiviSearch && UF.suiviSearch.length >= 2) {
+    const q = UF.suiviSearch.toLowerCase();
     filtered = filtered.filter(b =>
       (b.bureau + ' ' + b.etage + ' ' + b.bat + ' ' + b.site).toLowerCase().includes(q)
     );
@@ -3371,7 +3733,7 @@ function renderSuiviList() {
   const filterBtns = document.getElementById('suivi-filter-btns');
   if (filterBtns) {
     const btn = (key, label, color, icon) => {
-      const active = suiviFilter === key;
+      const active = UF.suiviFilter === key;
       const cnt = counts[key];
       const bg = active ? `background:${color};color:#fff;border-color:${color}` : '';
       return `<button class="btn btn-sm" style="min-height:34px;font-size:12px;flex:1;min-width:130px;${bg}" onclick="setSuiviFilter('${key}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${cnt})</span></button>`;
@@ -3397,9 +3759,9 @@ function renderSuiviList() {
   }
 
   // Header avec compteur
-  const statutLabel = { en_cours: 'en cours', non_ouvert: 'non inventoriés', termine: 'terminés', all: 'au total' }[suiviFilter];
+  const statutLabel = { en_cours: 'en cours', non_ouvert: 'non inventoriés', termine: 'terminés', all: 'au total' }[UF.suiviFilter];
   const headerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">
-    ${filtered.length} bureau${filtered.length > 1 ? 'x' : ''} ${statutLabel}${suiviSiteFilter !== 'all' ? ' à ' + suiviSiteFilter : ''}
+    ${filtered.length} bureau${filtered.length > 1 ? 'x' : ''} ${statutLabel}${UF.suiviSiteFilter !== 'all' ? ' à ' + UF.suiviSiteFilter : ''}
   </div>`;
 
   container.innerHTML = headerHTML + filtered.map(b => bureauCard(b)).join('');
@@ -3488,7 +3850,15 @@ function saveGsOnly() { updateBadge(); closeModal(); }
 function saveAndSignIn() { closeModal(); startGoogleLogin(); }
 async function saveAndLoad() { closeModal(); if (!gTok) { startGoogleLogin(); return; } await loadFromSheets(); }
 
-function renderTopbarActions() { const el = document.getElementById('topbar-actions'); if (el) el.innerHTML = '<button class="btn btn-sm" onclick="openScanLibre()" title="Scan libre"><i class="ti ti-scan"></i></button>'; }
+function renderTopbarActions() {
+  const el = document.getElementById('topbar-actions');
+  if (!el) return;
+  const nActive = countActiveFilters('all');
+  const filtBadge = nActive > 0
+    ? `<span style="position:absolute;top:-4px;right:-4px;background:var(--accent);color:#fff;font-size:9px;font-weight:700;border-radius:8px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px">${nActive}</span>`
+    : '';
+  el.innerHTML = `<button class="btn btn-sm" onclick="openFiltersPanel()" title="Gérer les filtres" style="position:relative"><i class="ti ti-filter"></i>${filtBadge}</button><button class="btn btn-sm" onclick="openScanLibre()" title="Scan libre"><i class="ti ti-scan"></i></button>`;
+}
 
 
 // ---------- MODIFIER EMPLACEMENT ----------
