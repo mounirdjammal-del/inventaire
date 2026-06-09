@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 8.4 -->
+<!-- VERSION 8.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1180,9 +1180,10 @@ function renderMain() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
           <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Emplacement actuel</div>
-          <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">${curLoc.bureau}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:2px">${curLoc.site} › ${curLoc.bat} › ${curLoc.etage}</div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">${esc(curLoc.bureau)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(curLoc.site)} › ${esc(curLoc.bat)} › ${esc(curLoc.etage)}</div>
         </div>
+        ${can('canEditLocation') ? `<button class="btn btn-sm" onclick="openEditLocation('${esc(curLoc.site)}','${esc(curLoc.bat)}','${esc(curLoc.etage)}','${esc(curLoc.bureau)}')" title="Modifier cet emplacement" style="min-height:36px;padding:0 10px"><i class="ti ti-edit" style="font-size:16px"></i></button>` : ''}
         <div style="text-align:right">
           <div style="font-size:24px;font-weight:800;color:${barColor};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
           <div class="txt-xs">${inv}/${items.length}</div>
