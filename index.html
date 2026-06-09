@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 8.5 -->
+<!-- VERSION 8.6 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1657,16 +1657,68 @@ function goToInventory(el) {
 }
 
 // ---------- ARTICLES VIEW ----------
-function renderArticlesView() {
-  _artLimit = 50;
-  const main = document.getElementById('main');
-  const all = [...DB, ...newItems].filter(r => !r._newLoc);
-  main.innerHTML = `<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:18px;font-weight:700">Articles (${all.length.toLocaleString('fr-FR')})</div><button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button></div>
-    <div class="search-row" style="margin-bottom:14px"><input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="debounceFilterArticles()" style="margin:0;flex:1"><select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px"><option value="">Tous</option><option value="__inv">Inventoriés</option><option value="__non">Non inventoriés</option><option value="OUI">Trouvés</option><option value="NON">Non trouvés</option></select></div>
-    <div id="art-list"></div>`;
-  filterArticlesView();
-}
+// ---------- VUE ARTICLES (avec bascule Référentiel / Biens physiques) ----------
+let articlesMode = 'biens';  // 'biens' (Inventaire) | 'ref' (référentiel Articles)
 let _artLimit = 50;
+let _refArtLimit = 100;
+
+function setArticlesMode(mode) {
+  articlesMode = mode;
+  _artLimit = 50;
+  _refArtLimit = 100;
+  renderArticlesView();
+}
+
+function renderArticlesView() {
+  const main = document.getElementById('main');
+  const isRef = articlesMode === 'ref';
+
+  // Statistiques
+  const totBiens = DB.length + newItems.filter(r => !r._newLoc).length;
+  const totRef = Object.keys(REL_ARTS).length;
+  const totFam = Object.keys(REL_FAMS).length;
+
+  const toggleBtn = (mode, label, count, icon) => {
+    const active = articlesMode === mode;
+    return `<button class="btn btn-sm" style="flex:1;min-height:38px;font-size:12px;${active ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : ''}" onclick="setArticlesMode('${mode}')"><i class="ti ${icon}"></i> ${label} <span style="opacity:.8">(${count.toLocaleString('fr-FR')})</span></button>`;
+  };
+
+  main.innerHTML = `
+    <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="font-size:18px;font-weight:700">${isRef ? 'Référentiel articles' : 'Articles inventoriés'}</div>
+      ${!isRef ? '<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button>' : ''}
+    </div>
+
+    <!-- Bascule -->
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      ${toggleBtn('biens', 'Biens physiques', totBiens, 'ti-package')}
+      ${toggleBtn('ref', 'Référentiel articles', totRef, 'ti-list')}
+    </div>
+
+    ${isRef ? renderRefArticlesContent(totFam, totRef) : renderBiensContent()}
+  `;
+
+  if (!isRef) filterArticlesView();
+  else filterRefArticles();
+}
+
+// ─── Mode 1 : Biens physiques (Inventaire) ───
+function renderBiensContent() {
+  return `
+    <div class="search-row" style="margin-bottom:14px">
+      <input type="text" id="art-srch" placeholder="Rechercher article, code barre…" oninput="debounceFilterArticles()" style="margin:0;flex:1">
+      <select id="art-filt" onchange="filterArticlesView()" style="margin:0;width:150px">
+        <option value="">Tous</option>
+        <option value="__inv">Inventoriés</option>
+        <option value="__non">Non inventoriés</option>
+        <option value="OUI">Trouvés</option>
+        <option value="NON">Non trouvés</option>
+      </select>
+    </div>
+    <div id="art-list"></div>
+  `;
+}
+
 function showMoreArticles() { _artLimit += 50; filterArticlesView(); }
 
 function filterArticlesView() {
@@ -1692,6 +1744,79 @@ function filterArticlesView() {
     const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
     return `<div class="t-row${ok ? ' inventoried' : ''}" data-cbi="${esc(r.cbi)}" onclick="openEditItem_cbi(this.dataset.cbi)"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.cbi)}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${esc(r.art)}</div><div class="txt-xs">${esc(r.fam)} · ${esc(r.bureau)}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center">${ok ? '<i class="ti ti-check" style="color:var(--success-txt)"></i>' : ''}</div></div>`;
   }).join('')}</div>${total > 50 ? `<div style="text-align:center;padding:12px"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">${total} résultats — ${filtered.length} affichés</div><button class="btn btn-sm" onclick="showMoreArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : ''}`;
+}
+
+// ─── Mode 2 : Référentiel Articles ───
+function renderRefArticlesContent(totFam, totRef) {
+  // Compter les biens par type d'article référentiel
+  const usageByArt = {};
+  for (const r of DB) if (r.article_id) usageByArt[r.article_id] = (usageByArt[r.article_id] || 0) + 1;
+  for (const r of newItems) if (r.article_id) usageByArt[r.article_id] = (usageByArt[r.article_id] || 0) + 1;
+  // Familles pour le sélecteur
+  const fams = Object.keys(REL_FAMS).map(fid => REL_FAMS[fid].famille_nom).sort();
+  return `
+    <div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap">
+      <div><div class="txt-xs" style="font-weight:600">Familles</div><div style="font-size:20px;font-weight:700">${totFam}</div></div>
+      <div><div class="txt-xs" style="font-weight:600">Types d'articles</div><div style="font-size:20px;font-weight:700">${totRef.toLocaleString('fr-FR')}</div></div>
+    </div>
+    <div class="search-row" style="margin-bottom:14px">
+      <input type="text" id="ref-art-srch" placeholder="Rechercher un article ou une famille…" oninput="debounceFilterRefArticles()" style="margin:0;flex:1">
+      <select id="ref-art-filt" onchange="filterRefArticles()" style="margin:0;width:180px">
+        <option value="">Toutes les familles</option>
+        ${fams.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="ref-art-list"></div>
+  `;
+}
+
+let _refArtTimer;
+function debounceFilterRefArticles() { clearTimeout(_refArtTimer); _refArtTimer = setTimeout(filterRefArticles, 200); }
+function showMoreRefArticles() { _refArtLimit += 100; filterRefArticles(); }
+
+function filterRefArticles() {
+  const el = document.getElementById('ref-art-list');
+  if (!el) return;
+  const srch = (document.getElementById('ref-art-srch')?.value || '').trim().toLowerCase();
+  const famFilt = document.getElementById('ref-art-filt')?.value || '';
+
+  // Compter biens physiques par article_id
+  const usageByArt = {};
+  for (const r of DB) if (r.article_id) usageByArt[r.article_id] = (usageByArt[r.article_id] || 0) + 1;
+  for (const r of newItems) if (r.article_id) usageByArt[r.article_id] = (usageByArt[r.article_id] || 0) + 1;
+
+  // Construire la liste à partir de REL_ARTS
+  const allArts = Object.values(REL_ARTS).map(a => ({
+    ...a,
+    usage: usageByArt[a.article_id] || 0
+  }));
+
+  let filtered = allArts;
+  if (famFilt) filtered = filtered.filter(a => a.famille_nom === famFilt);
+  if (srch) filtered = filtered.filter(a =>
+    (a.article_nom || '').toLowerCase().includes(srch) ||
+    (a.famille_nom || '').toLowerCase().includes(srch)
+  );
+  // Tri : famille puis nom
+  filtered.sort((a, b) => (a.famille_nom + a.article_nom).localeCompare(b.famille_nom + b.article_nom));
+
+  const total = filtered.length;
+  const shown = filtered.slice(0, _refArtLimit);
+
+  if (!shown.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article référentiel</div>'; return; }
+
+  el.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">${total.toLocaleString('fr-FR')} type${total > 1 ? 's' : ''} d'article${total > 1 ? 's' : ''}${shown.length < total ? ' · ' + shown.length + ' affichés' : ''}</div>` + shown.map(a => `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${esc(a.article_nom)}</div>
+        <div class="txt-xs">${esc(a.famille_nom)} · ID ${esc(a.article_id)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:14px;font-weight:700;color:${a.usage > 0 ? 'var(--accent)' : 'var(--text3)'}">${a.usage.toLocaleString('fr-FR')}</div>
+        <div class="txt-xs">${a.usage > 1 ? 'biens' : 'bien'}</div>
+      </div>
+    </div>
+  `).join('') + (total > shown.length ? `<div style="text-align:center;padding:12px"><button class="btn btn-sm" onclick="showMoreRefArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : '');
 }
 
 // ---------- DASHBOARD PROGRESS ----------
@@ -2387,15 +2512,48 @@ async function saveNew() {
   if (existCbi) { showDoublonModal('cbi', existCbi); return; }
   if (cbe) { const existCbe = findItemByCbe(cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
 
-  // Trouver emp_id et article_id depuis le référentiel
+  const famNom = document.getElementById('n-fam').value.trim();
+  const artNom = document.getElementById('n-art').value.trim();
+  if (!famNom || !artNom) { showToast('Famille et Article sont requis', 'warn'); return; }
+
+  // ── RÉFÉRENTIEL : créer Famille si nouvelle ──
+  let famille_id = null;
+  for (const fid in REL_FAMS) if (REL_FAMS[fid].famille_nom === famNom) { famille_id = fid; break; }
+  if (!famille_id) {
+    famille_id = 'F' + String(Object.keys(REL_FAMS).length + 1).padStart(3, '0');
+    REL_FAMS[famille_id] = { famille_id, famille_nom: famNom };
+    // Maintenir FAMS local pour les listes déroulantes
+    if (!FAMS[famNom]) FAMS[famNom] = [];
+    if (gTok) {
+      try { await sAppend('Familles', [[famille_id, famNom]]); }
+      catch(e) { console.error('Append Famille', e); }
+    }
+    showToast(`Nouvelle famille créée : ${famNom}`, 'info');
+  }
+
+  // ── RÉFÉRENTIEL : créer Article si nouveau ──
+  let article_id = null;
+  for (const aid in REL_ARTS) if (REL_ARTS[aid].article_nom === artNom && REL_ARTS[aid].famille_id === famille_id) { article_id = aid; break; }
+  if (!article_id) {
+    article_id = 'A' + String(Object.keys(REL_ARTS).length + 1).padStart(4, '0');
+    REL_ARTS[article_id] = { article_id, article_nom: artNom, famille_id, famille_nom: famNom };
+    // Maintenir FAMS local
+    if (!FAMS[famNom].includes(artNom)) FAMS[famNom].push(artNom);
+    if (gTok) {
+      try { await sAppend('Articles', [[article_id, artNom, famille_id]]); }
+      catch(e) { console.error('Append Article', e); }
+    }
+    showToast(`Nouvel article ajouté au référentiel : ${artNom}`, 'info');
+  }
+
+  // Trouver emp_id depuis le référentiel
   const emp_id = curLoc.bureau ? findEmpIdByLocation(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau) : '';
-  const article_id = findArticleIdByName(document.getElementById('n-art').value) || '';
 
   const item = {
     ...curLoc, cbi, cbe,
     emp_id, article_id,
-    fam: document.getElementById('n-fam').value,
-    art: document.getElementById('n-art').value,
+    fam: famNom,
+    art: artNom,
     marque: document.getElementById('n-marque').value,
     modele: document.getElementById('n-modele').value,
     serie: document.getElementById('n-serie').value,
