@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 8.7 -->
+<!-- VERSION 9.0 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -673,23 +673,75 @@ function confirmFallbackLogin() {
 }
 
 // ---------- SHEETS API ----------
+// ---------- API CENTRALISÉ AVEC RETRY EXPONENTIEL ----------
+// Pause entre tentatives (en ms)
+const _RETRY_DELAYS = [1000, 3000, 8000]; // 3 tentatives : 1s, 3s, 8s
+let _apiCallCount = 0;
+let _apiErrorCount = 0;
+
+async function apiCall(url, options = {}, attempt = 0) {
+  _apiCallCount++;
+  try {
+    const r = await fetch(url, options);
+    if (r.status === 401) {
+      // Token expiré : tenter un refresh silencieux
+      if (attempt === 0 && typeof silentTokenRefresh === 'function') {
+        try { await silentTokenRefresh(); } catch(e) {}
+        // Retry avec le nouveau token
+        if (options.headers && gTok) options.headers.Authorization = `Bearer ${gTok}`;
+        if (attempt < _RETRY_DELAYS.length) return apiCall(url, options, attempt + 1);
+      }
+      throw new Error('Session expirée');
+    }
+    if (r.status === 429 || r.status >= 500) {
+      // Rate limit ou erreur serveur → retry
+      if (attempt < _RETRY_DELAYS.length) {
+        await new Promise(res => setTimeout(res, _RETRY_DELAYS[attempt]));
+        return apiCall(url, options, attempt + 1);
+      }
+    }
+    if (!r.ok) { _apiErrorCount++; throw new Error(`API ${r.status}: ${r.statusText}`); }
+    return r.json();
+  } catch(e) {
+    // Erreur réseau (offline) → retry
+    if (!navigator.onLine || e.message.includes('Failed to fetch')) {
+      if (attempt < _RETRY_DELAYS.length) {
+        await new Promise(res => setTimeout(res, _RETRY_DELAYS[attempt]));
+        return apiCall(url, options, attempt + 1);
+      }
+    }
+    _apiErrorCount++;
+    throw e;
+  }
+}
+
 async function sGet(range) {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${gTok}` } });
-  if (r.status === 401) throw new Error('Session expirée');
-  if (!r.ok) throw new Error(`API ${r.status}`);
-  return r.json();
+  return apiCall(
+    `https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}`,
+    { headers: { Authorization: `Bearer ${gTok}` } }
+  );
 }
 async function sAppend(sheet, rows) {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(sheet)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) });
-  if (r.status === 401) throw new Error('Session expirée');
-  if (!r.ok) throw new Error(`Append ${r.status}`);
-  return r.json();
+  return apiCall(
+    `https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(sheet)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) }
+  );
 }
 async function sPut(range, rows) {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, { method: 'PUT', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) });
-  if (!r.ok) throw new Error(`PUT ${r.status}`);
-  return r.json();
+  return apiCall(
+    `https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: rows }) }
+  );
 }
+
+// ---------- CACHE getAllItems() ----------
+// Évite les spreads [...DB, ...newItems] répétés (coûteux sur 30k items)
+let _allItemsCache = null;
+function getAllItems() {
+  if (_allItemsCache === null) _allItemsCache = DB.concat(newItems);
+  return _allItemsCache;
+}
+function invalidateAllItemsCache() { _allItemsCache = null; }
 async function ensureSheets() {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
   if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
@@ -865,6 +917,7 @@ async function pullAll() {
     }
 
     buildHier();
+    invalidateAllItemsCache();
     invalidateStatsCache();
     saveLocal();
   } catch(e) {
@@ -995,6 +1048,10 @@ async function syncNow() {
 function refreshCurrentView() {
   // Si une modale est ouverte, ne rien rafraîchir derrière (éviter perte de saisie)
   if (document.querySelector('.modal.show')) return;
+  // Préserver la position de scroll
+  const scrollY = window.scrollY;
+  const main = document.getElementById('main');
+  const mainScroll = main ? main.scrollTop : 0;
   switch (currentView) {
     case 'home': renderHome(); break;
     case 'inventory': renderMain(); break;
@@ -1009,6 +1066,12 @@ function refreshCurrentView() {
       break;
     default: renderMain();
   }
+  // Restaurer le scroll après le repaint
+  requestAnimationFrame(() => {
+    window.scrollTo(0, scrollY);
+    const m = document.getElementById('main');
+    if (m && mainScroll) m.scrollTop = mainScroll;
+  });
 }
 function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(() => { if (gTok) syncNow(); }, 30000); }
 
@@ -1018,7 +1081,7 @@ function findItemByCbe(cbe) { return CBE_INDEX[cbe] || null; }
 function findItemByCode(code) { return CBI_INDEX[code] || CBE_INDEX[code] || null; }
 function buildHier() {
   HIER = {}; FAMS = {}; LOC_INDEX = {}; CBI_INDEX = {}; CBE_INDEX = {};
-  const all = [...DB, ...newItems];
+  const all = getAllItems();
   for (let i = 0; i < all.length; i++) {
     const r = all[i];
     if (!r.site) continue;
@@ -1824,7 +1887,7 @@ function renderBiensContent() {
 function showMoreArticles() { _artLimit += 50; filterArticlesView(); }
 
 function filterArticlesView() {
-  const all = [...DB, ...newItems].filter(r => !r._newLoc);
+  const all = getAllItems().filter(r => !r._newLoc);
   const srch = (document.getElementById('art-srch')?.value || '').toLowerCase();
   const filt = (document.getElementById('art-filt')?.value || '');
   let filtered = all.filter(r => {
@@ -2667,6 +2730,7 @@ async function saveNew() {
     _new: true, _addedBy: currentUser, _addedAt: Date.now()
   };
   newItems.push(item);
+  invalidateAllItemsCache();
   updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
   // Mettre à jour les index
   CBI_INDEX[cbi] = item;
@@ -2723,7 +2787,7 @@ function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'da
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
-function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); }
+function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); }
 // ─────────────────────────────────────────────────────────────
 //  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
 // ─────────────────────────────────────────────────────────────
@@ -2774,7 +2838,7 @@ function openSuiviPanel() {
   if (!can('canSuivi')) { showToast('Accès refusé', 'danger'); return; }
   if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
 
-  const totAll = [...DB, ...newItems].length;
+  const totAll = getAllItems().length;
   const totInv = Object.keys(updates).length;
   const totPct = totAll ? Math.round(totInv / totAll * 100) : 0;
 
@@ -2969,7 +3033,7 @@ async function generateExportFinal() {
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SH_EXPORT } } }] }) });
       await sPut(`${SH_EXPORT}!A1`, [H_EXPORT]);
     }
-    const all = [...DB, ...newItems];
+    const all = getAllItems();
     const rows = all.map(r => {
       const u = updates[r.cbi] || {};
       const photoLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | ');
@@ -2993,7 +3057,7 @@ async function generateExportFinal() {
 }
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
 function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
-function scanLibreSearch(val) { if (!val) return; const all = [...DB, ...newItems].filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${esc(val)}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${esc(item.site)}</strong> › ${esc(item.bat)} › ${esc(item.etage)} › ${esc(item.bureau)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${esc(u.by)}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${esc(item.cbi)}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${esc(item.site)}" data-bat="${esc(item.bat)}" data-etage="${esc(item.etage)}" data-bureau="${esc(item.bureau)}" onclick="dashGoToBureau(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${esc(val)}"</div>${cards}`; }
+function scanLibreSearch(val) { if (!val) return; const all = getAllItems().filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${esc(val)}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${esc(item.site)}</strong> › ${esc(item.bat)} › ${esc(item.etage)} › ${esc(item.bureau)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${esc(u.by)}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${esc(item.cbi)}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${esc(item.site)}" data-bat="${esc(item.bat)}" data-etage="${esc(item.etage)}" data-bureau="${esc(item.bureau)}" onclick="dashGoToBureau(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${esc(val)}"</div>${cards}`; }
 function openEditFromScanLibre(cbi) { const item = findItemByCbi(cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
 
 // ---------- EXCEL LOCAL ----------
@@ -3084,6 +3148,30 @@ async function saveEditLocation(btn) {
   const newName = document.getElementById('el-name').value.trim();
   if (!newName) { showToast('Le nom est requis', 'warn'); return; }
 
+  // ── CONFIRMATION FORTE pour modifications site/bat/etage (impact en cascade) ──
+  if (level !== 'bureau') {
+    const oldName = level === 'site' ? oldSite : level === 'bat' ? oldBat : oldEtage;
+    if (newName !== oldName) {
+      const items = getItemsAt(oldSite, level === 'site' ? null : oldBat, (level === 'site' || level === 'bat') ? null : oldEtage, null);
+      const count = items.length;
+      const labelMap = { site: 'site', bat: 'bâtiment', etage: 'étage' };
+      const lbl = labelMap[level];
+      // Demander confirmation forte : taper le nom actuel
+      const userInput = prompt(
+        `⚠ ATTENTION - Modification critique\n\n` +
+        `Vous allez renommer le ${lbl} :\n` +
+        `   "${oldName}" → "${newName}"\n\n` +
+        `Cette modification impactera ${count.toLocaleString('fr-FR')} article(s) ` +
+        `et tous les sous-emplacements rattachés.\n\n` +
+        `Pour confirmer, tapez exactement le nom actuel :\n"${oldName}"`
+      );
+      if (userInput !== oldName) {
+        if (userInput !== null) showToast('Confirmation invalide — modification annulée', 'warn');
+        return;
+      }
+    }
+  }
+
   let newSite = oldSite, newBat = oldBat, newEtage = oldEtage, newBureau = oldBureau;
   let targetBatId = null;
 
@@ -3170,7 +3258,7 @@ async function saveEditLocation(btn) {
         }
       }
       // Dénormalisation
-      for (const r of [...DB, ...newItems]) {
+      for (const r of getAllItems()) {
         if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage) {
           r.etage = newEtage;
           if (newBat !== oldBat) r.bat = newBat;
@@ -3197,7 +3285,7 @@ async function saveEditLocation(btn) {
         REL_EMPS[emp_id].bureau = newBureau;
       }
       // Dénormalisation
-      for (const r of [...DB, ...newItems]) {
+      for (const r of getAllItems()) {
         if (r.site === oldSite && r.bat === oldBat && r.etage === oldEtage && r.bureau === oldBureau) {
           r.bureau = newBureau; r.etage = newEtage; r.bat = newBat;
           count++;
@@ -3315,6 +3403,23 @@ function showAppShell() {
 function init() {
   loadLocal();
   loadPhotos();
+
+  // ── Écouter les changements de connectivité réseau ──
+  window.addEventListener('online', () => {
+    renderPendingIndicator();
+    if (gTok && pendingWrites.length) {
+      showToast('Connexion rétablie — synchronisation…', 'info');
+      pushPending().then(() => {
+        if (typeof syncNow === 'function') syncNow();
+      });
+    } else if (gTok) {
+      showToast('Connexion rétablie', 'success');
+    }
+  });
+  window.addEventListener('offline', () => {
+    renderPendingIndicator();
+    showToast('Mode hors-ligne — les modifications seront synchronisées au retour', 'warn');
+  });
   const hash = window.location.hash;
   if (hash.includes('access_token')) {
     const p = new URLSearchParams(hash.slice(1));
