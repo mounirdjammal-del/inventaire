@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 8.6 -->
+<!-- VERSION 8.7 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1658,7 +1658,7 @@ function goToInventory(el) {
 
 // ---------- ARTICLES VIEW ----------
 // ---------- VUE ARTICLES (avec bascule Référentiel / Biens physiques) ----------
-let articlesMode = 'biens';  // 'biens' (Inventaire) | 'ref' (référentiel Articles)
+let articlesMode = 'ref';    // 'ref' (Référentiel par défaut) | 'biens'
 let _artLimit = 50;
 let _refArtLimit = 100;
 
@@ -1667,6 +1667,106 @@ function setArticlesMode(mode) {
   _artLimit = 50;
   _refArtLimit = 100;
   renderArticlesView();
+}
+
+// ─── Ajout d'un article au RÉFÉRENTIEL uniquement (sans bien physique) ───
+function openAddRefArticle() {
+  const fams = Object.keys(REL_FAMS).map(fid => REL_FAMS[fid].famille_nom).sort();
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-plus"></i> Nouvel article référentiel</h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom:14px">
+        <i class="ti ti-info-circle"></i>
+        <div>Ajout d'un <strong>type d'article</strong> dans le référentiel — sans créer de bien physique. Sera disponible immédiatement dans les listes déroulantes.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Famille * <span class="txt-xs" style="font-weight:400">(existante ou nouvelle)</span></label>
+        <input type="text" id="ra-fam" list="raFamList" placeholder="Sélectionnez ou tapez une nouvelle famille…" autocomplete="off">
+        <datalist id="raFamList">${fams.map(f => `<option value="${esc(f)}"></option>`).join('')}</datalist>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Nom de l'article *</label>
+        <input type="text" id="ra-art" placeholder="Ex: Ordinateur portable HP ProBook 450" autocomplete="off">
+        <div id="ra-art-msg" class="txt-xs" style="margin-top:-4px;display:none"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveRefArticle()"><i class="ti ti-plus"></i> Ajouter au référentiel</button>
+      </div>
+    </div>`);
+
+  // Vérification temps réel des doublons
+  const artInp = document.getElementById('ra-art');
+  const famInp = document.getElementById('ra-fam');
+  const msg = document.getElementById('ra-art-msg');
+  const checkDuplicate = () => {
+    const art = artInp.value.trim().toLowerCase();
+    const fam = famInp.value.trim().toLowerCase();
+    if (!art) { msg.style.display = 'none'; return; }
+    const dup = Object.values(REL_ARTS).find(a =>
+      a.article_nom.toLowerCase() === art &&
+      (!fam || a.famille_nom.toLowerCase() === fam)
+    );
+    if (dup) {
+      msg.style.display = 'block';
+      msg.style.color = 'var(--warn-txt)';
+      msg.innerHTML = `⚠ Cet article existe déjà dans la famille "${esc(dup.famille_nom)}"`;
+    } else {
+      msg.style.display = 'block';
+      msg.style.color = 'var(--success-txt)';
+      msg.innerHTML = `✓ Nouvel article disponible`;
+    }
+  };
+  artInp.addEventListener('input', checkDuplicate);
+  famInp.addEventListener('input', checkDuplicate);
+}
+
+async function saveRefArticle() {
+  const famNom = document.getElementById('ra-fam').value.trim();
+  const artNom = document.getElementById('ra-art').value.trim();
+  if (!famNom) { showToast('La famille est requise', 'warn'); return; }
+  if (!artNom) { showToast("Le nom de l'article est requis", 'warn'); return; }
+
+  // Doublon strict
+  const dup = Object.values(REL_ARTS).find(a =>
+    a.article_nom.toLowerCase() === artNom.toLowerCase() &&
+    a.famille_nom.toLowerCase() === famNom.toLowerCase()
+  );
+  if (dup) { showToast('Cet article existe déjà dans cette famille', 'warn'); return; }
+
+  // 1. Créer la famille si nouvelle
+  let famille_id = null;
+  for (const fid in REL_FAMS) if (REL_FAMS[fid].famille_nom === famNom) { famille_id = fid; break; }
+  if (!famille_id) {
+    famille_id = 'F' + String(Object.keys(REL_FAMS).length + 1).padStart(3, '0');
+    REL_FAMS[famille_id] = { famille_id, famille_nom: famNom };
+    if (!FAMS[famNom]) FAMS[famNom] = [];
+    if (gTok) {
+      try { await sAppend('Familles', [[famille_id, famNom]]); }
+      catch(e) { console.error('Append Famille', e); }
+    }
+  }
+
+  // 2. Créer l'article
+  const article_id = 'A' + String(Object.keys(REL_ARTS).length + 1).padStart(4, '0');
+  REL_ARTS[article_id] = { article_id, article_nom: artNom, famille_id, famille_nom: famNom };
+  if (!FAMS[famNom].includes(artNom)) FAMS[famNom].push(artNom);
+
+  if (gTok) {
+    try { await sAppend('Articles', [[article_id, artNom, famille_id]]); }
+    catch(e) { console.error('Append Article', e); }
+  }
+
+  saveLocal();
+  closeModal();
+  renderArticlesView();  // refresh la liste
+  showToast(`Article "${artNom}" ajouté au référentiel`, 'success');
 }
 
 function renderArticlesView() {
@@ -1686,13 +1786,15 @@ function renderArticlesView() {
   main.innerHTML = `
     <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div style="font-size:18px;font-weight:700">${isRef ? 'Référentiel articles' : 'Articles inventoriés'}</div>
-      ${!isRef ? '<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button>' : ''}
+      ${isRef
+        ? '<button class="btn btn-sm btn-primary" onclick="openAddRefArticle()"><i class="ti ti-plus"></i> Nouvel article référentiel</button>'
+        : '<button class="btn btn-sm btn-primary" onclick="openAddItem()"><i class="ti ti-plus"></i> Ajouter</button>'}
     </div>
 
-    <!-- Bascule -->
+    <!-- Bascule : Référentiel à gauche, Biens à droite -->
     <div style="display:flex;gap:6px;margin-bottom:14px">
-      ${toggleBtn('biens', 'Biens physiques', totBiens, 'ti-package')}
       ${toggleBtn('ref', 'Référentiel articles', totRef, 'ti-list')}
+      ${toggleBtn('biens', 'Biens physiques', totBiens, 'ti-package')}
     </div>
 
     ${isRef ? renderRefArticlesContent(totFam, totRef) : renderBiensContent()}
