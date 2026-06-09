@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 9.6 -->
+<!-- VERSION 9.8 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -459,7 +459,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
           <div class="sidebar-label">Scanner emplacement</div>
           <div class="loc-scan-row">
             <i class="ti ti-qrcode" style="font-size:20px;color:var(--text2)"></i>
-            <input type="text" id="loc-scan-inp" placeholder="Code barre emplacement…" onkeydown="onLocScanKey(event)" autocomplete="off" inputmode="none">
+            <input type="text" id="loc-scan-inp" placeholder="Code barre emplacement…" onkeydown="onLocScanKey(event)" autocomplete="off" inputmode="text">
           </div>
           <div class="loc-feedback" id="loc-feedback"></div>
         </div>
@@ -1120,6 +1120,8 @@ async function writeSuivi(site_code, statut) {
 const DEFAULT_FILTERS = {
   dashFilter: 'en_cours',          // Avancement : statut
   dashSiteFilter: 'all',           // Avancement : site
+  dashBatFilter: 'all',            // Avancement : bâtiment
+  dashEtageFilter: 'all',          // Avancement : étage
   dashSearch: '',                  // Avancement : recherche
   suiviFilter: 'en_cours',         // Suivi : statut
   suiviSiteFilter: 'all',          // Suivi : site
@@ -1817,7 +1819,7 @@ function renderMain() {
     <!-- Zone de scan avec indicateurs 3 cas -->
     <div class="scan-zone">
       <i class="ti ti-scan"></i>
-      <input type="text" id="scan-inp" placeholder="Scanner un code barre puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="none">
+      <input type="text" id="scan-inp" placeholder="Scanner un code barre puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;font-size:11px">
@@ -2061,7 +2063,7 @@ function renderLocationsView() {
     <!-- Zone de scan pour accès rapide -->
     <div class="scan-zone" style="margin-bottom:10px">
       <i class="ti ti-scan"></i>
-      <input type="text" id="loc-search-scan" placeholder="Scanner code barre emplacement…" onkeydown="onLocSearchScan(event)" autocomplete="off" inputmode="none">
+      <input type="text" id="loc-search-scan" placeholder="Scanner code barre emplacement…" onkeydown="onLocSearchScan(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
     </div>
 
@@ -2115,19 +2117,43 @@ function onLocSearchScan(e) {
   const v = e.target.value.trim();
   e.target.value = '';
   if (!v) return;
-  // Chercher l'emplacement par code barre EMP
-  // 1. Dans la base d'articles (le CBE de l'article = code de son emplacement)
-  const item = findItemByCbe(v && !r._newLoc);
+
+  // 1. Recherche exacte dans REL_EMPS sur le CBE
+  for (const eid in REL_EMPS) {
+    if (REL_EMPS[eid].cbe === v) {
+      const e = REL_EMPS[eid];
+      const site = (REL_SITES[e.site_id] || {}).site_code;
+      const bat = (REL_BATS[e.bat_id] || {}).bat_nom;
+      if (site && bat && e.bureau) {
+        showLocSearchResult([{ site, bat, etage: e.etage, bureau: e.bureau }], 'Code emplacement : ' + v);
+        return;
+      }
+    }
+  }
+
+  // 2. Recherche dans les articles
+  const item = findItemByCbe(v);
   if (item) {
     showLocSearchResult([{ site: item.site, bat: item.bat, etage: item.etage, bureau: item.bureau }], 'Code emplacement : ' + v);
     return;
   }
-  // 2. Dans les nouveaux emplacements créés
-  const loc = newLocs.find(l => l.cbe === v);
-  if (loc) {
-    showLocSearchResult([{ site: loc.site, bat: loc.bat, etage: loc.etage, bureau: loc.bureau }], 'Code emplacement : ' + v);
+
+  // 3. Recherche fuzzy (code partiel ou nom de bureau)
+  const vLow = v.toLowerCase();
+  const matches = [];
+  for (const eid in REL_EMPS) {
+    const emp = REL_EMPS[eid];
+    if ((emp.cbe || '').includes(v) || (emp.bureau || '').toLowerCase().includes(vLow)) {
+      const site = (REL_SITES[emp.site_id] || {}).site_code;
+      const bat = (REL_BATS[emp.bat_id] || {}).bat_nom;
+      if (site && bat && emp.bureau) matches.push({ site, bat, etage: emp.etage, bureau: emp.bureau });
+    }
+  }
+  if (matches.length) {
+    showLocSearchResult(matches, `Recherche : "${v}" (${matches.length} résultat${matches.length>1?'s':''})`);
     return;
   }
+
   showToast('Code emplacement "' + v + '" introuvable', 'warn');
 }
 
@@ -2553,7 +2579,22 @@ function filterRefArticles() {
 // (déplacé dans UF — voir gestionnaire centralisé)
 
 function setDashFilter(f) { setFilter('dashFilter', f); renderDashboardList(); }
-function setDashSiteFilter(s) { setFilter('dashSiteFilter', s); renderDashboardList(); }
+function setDashSiteFilter(s) {
+  setFilter('dashSiteFilter', s);
+  // Reset les niveaux inférieurs quand on change le site
+  setFilter('dashBatFilter', 'all');
+  setFilter('dashEtageFilter', 'all');
+  renderDashboard();
+}
+function setDashBatFilter(b) {
+  setFilter('dashBatFilter', b);
+  setFilter('dashEtageFilter', 'all');
+  renderDashboard();
+}
+function setDashEtageFilter(e) {
+  setFilter('dashEtageFilter', e);
+  renderDashboardList();
+}
 
 // Statut d'un bureau d'après son avancement
 function getBureauDashStatut(stats) {
@@ -2594,6 +2635,25 @@ function renderDashboard() {
     .concat(sites.map(s => `<option value="${esc(s)}" ${UF.dashSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
 
+  // Bâtiments dépendant du site choisi
+  let batsAvailable = [];
+  if (UF.dashSiteFilter !== 'all' && HIER[UF.dashSiteFilter]) {
+    batsAvailable = Object.keys(HIER[UF.dashSiteFilter]).sort();
+  }
+  const batOpts = ['<option value="all">Tous les bâtiments</option>']
+    .concat(batsAvailable.map(b => `<option value="${esc(b)}" ${UF.dashBatFilter === b ? 'selected' : ''}>${esc(b)}</option>`))
+    .join('');
+
+  // Étages dépendant du bâtiment choisi
+  let etagesAvailable = [];
+  if (UF.dashSiteFilter !== 'all' && UF.dashBatFilter !== 'all' &&
+      HIER[UF.dashSiteFilter] && HIER[UF.dashSiteFilter][UF.dashBatFilter]) {
+    etagesAvailable = Object.keys(HIER[UF.dashSiteFilter][UF.dashBatFilter]).sort();
+  }
+  const etageOpts = ['<option value="all">Tous les étages</option>']
+    .concat(etagesAvailable.map(e => `<option value="${esc(e)}" ${UF.dashEtageFilter === e ? 'selected' : ''}>${esc(e)}</option>`))
+    .join('');
+
   main.innerHTML = `
     <div class="flex-between" style="margin-bottom:14px;flex-wrap:wrap">
       <div>
@@ -2611,10 +2671,20 @@ function renderDashboard() {
     </div>
     <div class="pbar" style="height:10px;border-radius:5px;margin-bottom:18px"><div class="pbar-fill" style="width:${pct}%;border-radius:5px"></div></div>
 
-    <!-- Filtre par site -->
-    <div style="margin-bottom:10px">
-      <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
-      <select onchange="setDashSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
+    <!-- Filtres hiérarchiques en cascade -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
+        <select onchange="setDashSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
+      </div>
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Bâtiment</label>
+        <select onchange="setDashBatFilter(this.value)" style="width:100%" ${UF.dashSiteFilter === 'all' ? 'disabled' : ''}>${batOpts}</select>
+      </div>
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Étage</label>
+        <select onchange="setDashEtageFilter(this.value)" style="width:100%" ${UF.dashBatFilter === 'all' ? 'disabled' : ''}>${etageOpts}</select>
+      </div>
     </div>
 
     <!-- Filtres par état -->
@@ -2642,6 +2712,8 @@ function renderDashboard() {
 function renderDashboardList() {
   let data = buildDashBureauData();
   if (UF.dashSiteFilter !== 'all') data = data.filter(b => b.site === UF.dashSiteFilter);
+  if (UF.dashBatFilter !== 'all') data = data.filter(b => b.bat === UF.dashBatFilter);
+  if (UF.dashEtageFilter !== 'all') data = data.filter(b => b.etage === UF.dashEtageFilter);
 
   // Compteurs par statut
   const counts = {
@@ -2745,8 +2817,30 @@ function dashGoToBureau(btn) {
 }
 
 // ---------- SIDEBAR & LOCATION NAVIGATION ----------
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('open'); }
-function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); }
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  // S'assurer que la sidebar est en display:flex (pas none par héritage d'une autre vue)
+  if (getComputedStyle(sb).display === 'none') {
+    sb.style.display = 'flex';
+  }
+  sb.classList.toggle('open');
+  if (ov) ov.classList.toggle('open');
+  // Sur desktop : si la sidebar est masquée par .open (case improbable), on force le scroll vers elle
+  // Sur mobile : la classe .open déclenche le slide-in
+  // Scroll vers les sites pour montrer où sélectionner
+  setTimeout(() => {
+    const firstSite = sb.querySelector('.loc-tree-site, .sidebar-section');
+    if (firstSite && sb.classList.contains('open')) firstSite.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 350);
+}
+function closeSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('open');
+}
 function onSiteChange() {
   const s = document.getElementById('sel-site').value;
   curLoc = { site: s, bat: '', etage: '', bureau: '' };
@@ -2793,12 +2887,57 @@ function onLocScanKey(e) {
   const v = e.target.value.trim();
   e.target.value = '';
   if (!v) return;
-  if (!DB.length) { showLocFb('Chargez d\'abord les données', 'warn'); return; }
-  const found = findItemByCbe(v);
-  if (!found) { showLocFb(`"${v}" introuvable`, 'warn'); return; }
-  navigateTo(found.site, found.bat, found.etage, found.bureau);
-  showLocFb('✓ ' + found.bureau, 'success');
-  closeSidebar();
+  if (!DB.length && !Object.keys(REL_EMPS).length) { showLocFb('Chargez d\'abord les données', 'warn'); return; }
+
+  // 1. Recherche exacte dans REL_EMPS sur le CBE
+  for (const eid in REL_EMPS) {
+    if (REL_EMPS[eid].cbe === v) {
+      const e = REL_EMPS[eid];
+      const site = (REL_SITES[e.site_id] || {}).site_code;
+      const bat = (REL_BATS[e.bat_id] || {}).bat_nom;
+      if (site && bat && e.bureau) {
+        navigateTo(site, bat, e.etage, e.bureau);
+        showLocFb('✓ ' + e.bureau, 'success');
+        closeSidebar();
+        return;
+      }
+    }
+  }
+
+  // 2. Recherche dans les articles (cas où CBE est rattaché à un article)
+  const foundItem = findItemByCbe(v);
+  if (foundItem && foundItem.bureau) {
+    navigateTo(foundItem.site, foundItem.bat, foundItem.etage, foundItem.bureau);
+    showLocFb('✓ ' + foundItem.bureau, 'success');
+    closeSidebar();
+    return;
+  }
+
+  // 3. Recherche fuzzy : nom de bureau ou code partiel
+  const vLow = v.toLowerCase();
+  const matches = [];
+  for (const eid in REL_EMPS) {
+    const emp = REL_EMPS[eid];
+    if ((emp.cbe || '').includes(v) ||
+        (emp.bureau || '').toLowerCase().includes(vLow)) {
+      const site = (REL_SITES[emp.site_id] || {}).site_code;
+      const bat = (REL_BATS[emp.bat_id] || {}).bat_nom;
+      if (site && bat && emp.bureau) matches.push({ site, bat, etage: emp.etage, bureau: emp.bureau, cbe: emp.cbe });
+    }
+  }
+  if (matches.length === 1) {
+    const m = matches[0];
+    navigateTo(m.site, m.bat, m.etage, m.bureau);
+    showLocFb('✓ ' + m.bureau + (m.cbe ? ` (${m.cbe})` : ''), 'success');
+    closeSidebar();
+    return;
+  }
+  if (matches.length > 1) {
+    showLocFb(`${matches.length} correspondances trouvées — précisez`, 'warn');
+    return;
+  }
+
+  showLocFb(`"${v}" introuvable`, 'warn');
 }
 function navigateTo(site, bat, etage, bureau) {
   document.getElementById('sel-site').value = site;
@@ -2936,7 +3075,8 @@ function openTransferModal(item) {
       
       <!-- Formulaire de mise à jour (comme openEditItem) -->
       <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
-      <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${obs}</textarea></div>
+      <div class="form-group"><label class="form-label">N° Amendis</label><input type="text" id="t-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis"></div>
+      <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${esc(obs)}</textarea></div>
       <div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
       ${renderPhotoSection(item.cbi)}
 
@@ -2960,6 +3100,7 @@ async function confirmTransferAndUpdate(cbi) {
 
   // 1. Récupérer les valeurs du formulaire
   const trouveEl = document.querySelector('input[name="t-trouve"]:checked');
+  const newProd = (document.getElementById('t-prod')?.value || '').trim();
   const u = {
     serv: document.getElementById('t-sv').value,
     renouv: document.getElementById('t-rv').value,
@@ -2968,6 +3109,13 @@ async function confirmTransferAndUpdate(cbi) {
     by: currentUser,
     ts: Date.now()
   };
+
+  // Si N° Amendis modifié, mettre à jour l'item et la ligne Inventaire
+  const prodChanged = newProd !== (item.prod || '');
+  if (prodChanged) {
+    item.prod = newProd;
+    try { await updateInventoryRow(item); } catch(e) {}
+  }
 
   // Ajouter la mention du transfert dans l'observation
   const transferNote = 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
@@ -3083,7 +3231,11 @@ function openEditItem(item) {
         </div>
         <div class="form-group">
           <label class="form-label">N° de série</label>
-          <input type="text" id="e-serie" value="${esc(item.serie || '')}" inputmode="none">
+          <input type="text" id="e-serie" value="${esc(item.serie || '')}" inputmode="text">
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° Amendis</label>
+          <input type="text" id="e-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis">
         </div>
       </div>
     </details>
@@ -3160,9 +3312,10 @@ async function saveUpd(cbi) {
     const newMarque = document.getElementById('e-marque').value.trim();
     const newModele = document.getElementById('e-modele').value.trim();
     const newSerie = document.getElementById('e-serie').value.trim();
+    const newProd = (document.getElementById('e-prod')?.value || '').trim();
     const charChanged = (newFam !== (item.fam || '') || newArt !== (item.art || '') ||
                         newMarque !== (item.marque || '') || newModele !== (item.modele || '') ||
-                        newSerie !== (item.serie || ''));
+                        newSerie !== (item.serie || '') || newProd !== (item.prod || ''));
     if (charChanged && newFam && newArt) {
       // Créer la famille si nouvelle
       let famille_id = null;
@@ -3190,6 +3343,7 @@ async function saveUpd(cbi) {
       item.marque = newMarque;
       item.modele = newModele;
       item.serie = newSerie;
+      item.prod = newProd;
       // Tracer
       const charNote = `Caractéristiques modifiées (${oldArt} → ${newArt})`;
       u.obs = u.obs ? u.obs + ' | ' + charNote : charNote;
@@ -3247,9 +3401,8 @@ async function updateInventoryRow(item) {
   const rows = d.values || [];
   const idx = rows.findIndex(r => r[0] === item.cbi);
   if (idx < 0) return; // Pas dans Inventaire (probablement un newItem)
-  // Updater colonnes B (article_id), D (marque), E (modèle), F (série)
-  // Schema Inventaire: cbi, article_id, emp_id, marque, modele, serie, num_amendis, quantite, etat_service, etat_renouv, observation, patrimoine
-  await sPut(`Inventaire!B${idx + 2}:F${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '']]);
+  // Schema Inventaire: A=cbi, B=article_id, C=emp_id, D=marque, E=modele, F=serie, G=num_amendis, ...
+  await sPut(`Inventaire!B${idx + 2}:G${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '', item.prod || '']]);
 }
 function openAddItem(prefilledCode) {
   const fams = Object.keys(FAMS).sort();
@@ -3273,12 +3426,12 @@ function openAddItem(prefilledCode) {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Code barre IMMO *</label>
-          <input type="text" id="n-cbi" value="${cbiVal}" placeholder="32012345" inputmode="none" onblur="checkCbiField(this)">
+          <input type="text" id="n-cbi" value="${cbiVal}" placeholder="32012345" inputmode="text" onblur="checkCbiField(this)">
           <div id="n-cbi-msg" style="display:none"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Code barre EMP</label>
-          <input type="text" id="n-cbe" value="${cbeVal}" placeholder="31000123" inputmode="none" onblur="checkCbeField(this)">
+          <input type="text" id="n-cbe" value="${cbeVal}" placeholder="31000123" inputmode="text" onblur="checkCbeField(this)">
           <div id="n-cbe-msg" style="display:none"></div>
         </div>
       </div>
@@ -3311,12 +3464,17 @@ function openAddItem(prefilledCode) {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">N° de série</label>
-          <input type="text" id="n-serie" inputmode="none">
+          <input type="text" id="n-serie" inputmode="text">
         </div>
         <div class="form-group">
           <label class="form-label">Quantité</label>
           <input type="number" id="n-qty" value="1" min="1">
         </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">N° Amendis</label>
+        <input type="text" id="n-prod" placeholder="Numéro d'immatriculation Amendis">
       </div>
 
       <div class="form-row">
@@ -3499,7 +3657,8 @@ async function saveNew() {
     serv: document.getElementById('n-sv').value,
     renouv: document.getElementById('n-rv').value,
     obs: document.getElementById('n-obs').value,
-    prod: '', dir: '', patrim: '', nom_inv: '',
+    prod: (document.getElementById('n-prod')?.value || '').trim(),
+    dir: '', patrim: '', nom_inv: '',
     _new: true, _addedBy: currentUser, _addedAt: Date.now()
   };
   newItems.push(item);
@@ -3860,7 +4019,7 @@ async function generateExportFinal() {
     logActivity('EXPORT_FINAL', `${rows.length} lignes exportées`, SH_EXPORT);
   } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); console.error(e); }
 }
-function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
+function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="text" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
 function onScanLibreKey(e) { if (e.key !== 'Enter') return; scanLibreSearch(e.target.value.trim()); }
 function scanLibreSearch(val) { if (!val) return; const all = getAllItems().filter(r => !r._newLoc); const found = all.filter(r => r.cbi === val || r.cbe === val); const res = document.getElementById('scan-libre-result'); if (!res) return; if (!found.length) { res.innerHTML = `<div class="alert alert-danger"><i class="ti ti-alert-circle"></i>Code "${esc(val)}" introuvable</div>`; return; } const cards = found.map(item => { const u = updates[item.cbi] || {}; const sv = u.serv || item.serv; const ok = !!updates[item.cbi]; const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut'; const rc = (u.renouv || item.renouv) === 'BON' ? 'b-bon' : (u.renouv || item.renouv) === 'MOYEN' ? 'b-moyen' : 'b-vetuste'; const tr = u.trouve || ''; return `<div class="found-card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(item.fam)}</div><div style="background:var(--info-bg);color:var(--info-txt);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:10px"><i class="ti ti-map-pin"></i> <strong>${esc(item.site)}</strong> › ${esc(item.bat)} › ${esc(item.etage)} › ${esc(item.bureau)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="badge ${sc}">${sv}</span><span class="badge ${rc}">${u.renouv || item.renouv}</span>${ok ? `<span class="badge b-service">✓ Inventorié par ${esc(u.by)}</span>` : ''}${tr === 'OUI' ? '<span class="badge" style="background:var(--success-bg);color:var(--success-txt)">✓ Trouvé</span>' : ''}${tr === 'NON' ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger-txt)">✗ Non trouvé</span>' : ''}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-cbi="${esc(item.cbi)}" onclick="openEditFromScanLibre(this.dataset.cbi)"><i class="ti ti-edit"></i> Mettre à jour</button><button class="btn btn-sm" data-site="${esc(item.site)}" data-bat="${esc(item.bat)}" data-etage="${esc(item.etage)}" data-bureau="${esc(item.bureau)}" onclick="dashGoToBureau(this);closeModal()"><i class="ti ti-arrow-right"></i> Aller à l’emplacement</button></div></div>`; }).join(''); res.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">${found.length} résultat(s) pour "${esc(val)}"</div>${cards}`; }
 function openEditFromScanLibre(cbi) { const item = findItemByCbi(cbi); if (!item) return; closeModal(); setTimeout(() => openEditItem(item), 100); }
@@ -4136,7 +4295,7 @@ async function saveEditLocation(btn) {
 function openAddLocation() {
   if (!can('canAddLocation')) { showToast('Accès refusé', 'danger'); return; }
   const sites = Object.keys(HIER).sort();
-  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-group"><label class="form-label">Site *</label><select id="al-site" onchange="alSite()">${sites.map(s => `<option>${s}</option>`).join('')}<option value="__n">+ Nouveau site…</option></select><input type="text" id="al-site-n" placeholder="Nom du site" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bâtiment *</label><select id="al-bat" onchange="alBat()"><option value="">-- Choisir --</option></select><input type="text" id="al-bat-n" placeholder="Nom du bâtiment" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Étage *</label><select id="al-etage" onchange="alEtage()"><option value="">-- Choisir --</option></select><input type="text" id="al-etage-n" placeholder="Ex: RDC, ETAGE 1…" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bureau / Local *</label><select id="al-bureau" onchange="alBureau()"><option value="">-- Choisir --</option></select><input type="text" id="al-bureau-n" placeholder="Nom du bureau" style="display:none;margin-top:8px"></div><div class="form-row" style="margin-bottom:0"><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="al-cbe" placeholder="31000999" inputmode="none"></div><div class="form-group"><label class="form-label">Type</label><input type="text" id="al-type" placeholder="BUREAU, SALLE…"></div></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveLoc()"><i class="ti ti-map-pin"></i> Créer</button></div></div>`);
+  showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-group"><label class="form-label">Site *</label><select id="al-site" onchange="alSite()">${sites.map(s => `<option>${s}</option>`).join('')}<option value="__n">+ Nouveau site…</option></select><input type="text" id="al-site-n" placeholder="Nom du site" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bâtiment *</label><select id="al-bat" onchange="alBat()"><option value="">-- Choisir --</option></select><input type="text" id="al-bat-n" placeholder="Nom du bâtiment" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Étage *</label><select id="al-etage" onchange="alEtage()"><option value="">-- Choisir --</option></select><input type="text" id="al-etage-n" placeholder="Ex: RDC, ETAGE 1…" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bureau / Local *</label><select id="al-bureau" onchange="alBureau()"><option value="">-- Choisir --</option></select><input type="text" id="al-bureau-n" placeholder="Nom du bureau" style="display:none;margin-top:8px"></div><div class="form-row" style="margin-bottom:0"><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="al-cbe" placeholder="31000999" inputmode="text"></div><div class="form-group"><label class="form-label">Type</label><input type="text" id="al-type" placeholder="BUREAU, SALLE…"></div></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveLoc()"><i class="ti ti-map-pin"></i> Créer</button></div></div>`);
   alSite();
 }
 function alSite() { const v = document.getElementById('al-site').value; document.getElementById('al-site-n').style.display = v === '__n' ? 'block' : 'none'; const bb = document.getElementById('al-bat'); bb.innerHTML = '<option value="">-- Choisir --</option>'; if (v && v !== '__n' && HIER[v]) Object.keys(HIER[v]).sort().forEach(b => bb.innerHTML += `<option>${b}</option>`); bb.innerHTML += '<option value="__n">+ Nouveau bâtiment…</option>'; alBat(); }
