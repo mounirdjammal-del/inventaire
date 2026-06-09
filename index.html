@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 9.0 -->
+<!-- VERSION 9.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -13,6 +13,115 @@
 <meta name="apple-mobile-web-app-title" content="Inventaire">
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <title>Inventaire Immobilisations</title>
+<meta name="theme-color" content="#2563EB">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Inventaire">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- Manifest PWA inline (Base64 data URL) -->
+<link rel="manifest" id="pwa-manifest">
+<script>
+// Manifest généré dynamiquement pour rester dans un seul fichier
+(function() {
+  const manifest = {
+    name: "Inventaire Immobilisations",
+    short_name: "Inventaire",
+    description: "Inventaire des immobilisations Amendis - Mafintec Consulting",
+    start_url: "./",
+    scope: "./",
+    display: "standalone",
+    background_color: "#0f172a",
+    theme_color: "#2563EB",
+    orientation: "any",
+    icons: [
+      { src: document.querySelector('link[rel="icon"]').href, sizes: "40x40", type: "image/png", purpose: "any maskable" }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+})();
+
+// Service Worker inline pour cache offline et installation PWA
+(function() {
+  if (!('serviceWorker' in navigator)) return;
+  const swCode = `
+    const CACHE = 'inv-v9-1';
+    self.addEventListener('install', e => { self.skipWaiting(); });
+    self.addEventListener('activate', e => {
+      e.waitUntil(
+        caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+          .then(() => self.clients.claim())
+      );
+    });
+    self.addEventListener('fetch', event => {
+      const url = new URL(event.request.url);
+      // Ne pas intercepter les API Google (laisser passer normalement)
+      if (url.host.includes('googleapis.com') || url.host.includes('google.com') ||
+          url.host.includes('googleusercontent.com') || url.host.includes('accounts.google')) return;
+      // Stratégie network-first pour le HTML principal (toujours la dernière version)
+      if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+        event.respondWith(
+          fetch(event.request).then(r => {
+            const copy = r.clone();
+            caches.open(CACHE).then(c => c.put(event.request, copy));
+            return r;
+          }).catch(() => caches.match(event.request).then(r => r || caches.match('./')))
+        );
+        return;
+      }
+      // Cache-first pour assets (CSS, JS, fonts, icons)
+      event.respondWith(
+        caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          return fetch(event.request).then(r => {
+            if (!r.ok) return r;
+            const copy = r.clone();
+            caches.open(CACHE).then(c => c.put(event.request, copy));
+            return r;
+          });
+        }).catch(() => new Response('Hors-ligne', { status: 503 }))
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(swBlob);
+  // Enregistrer après le load pour ne pas bloquer le premier rendu
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(swUrl, { scope: './' })
+      .then(reg => { /* SW enregistré */ })
+      .catch(err => console.log('SW non enregistré (normal si serveur impose Content-Type strict):', err.message));
+  });
+})();
+
+// Détecter quand l'app peut être installée
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  // Afficher discrètement un bouton si on est connecté
+  setTimeout(() => {
+    if (typeof showInstallButton === 'function') showInstallButton();
+  }, 3000);
+});
+function showInstallButton() {
+  if (!_deferredInstallPrompt || document.getElementById('install-pwa-btn')) return;
+  const target = document.getElementById('topbar-actions') || document.getElementById('user-area');
+  if (!target) return;
+  const btn = document.createElement('button');
+  btn.id = 'install-pwa-btn';
+  btn.className = 'btn btn-sm';
+  btn.title = "Installer l'application sur votre appareil";
+  btn.innerHTML = '<i class="ti ti-download"></i>';
+  btn.style.cssText = 'background:var(--accent);color:#fff;border-color:var(--accent)';
+  btn.onclick = async () => {
+    if (!_deferredInstallPrompt) return;
+    _deferredInstallPrompt.prompt();
+    const { outcome } = await _deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') { btn.remove(); _deferredInstallPrompt = null; }
+  };
+  target.appendChild(btn);
+}
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
 <style>
@@ -747,13 +856,14 @@ async function ensureSheets() {
   if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
   const meta = await r.json();
   const exist = meta.sheets.map(s => s.properties.title);
-  const needed = ['Updates', 'NouveauxArticles', 'SuiviSites'].filter(s => !exist.includes(s));
+  const needed = ['Updates', 'NouveauxArticles', 'SuiviSites', 'ActivityLog'].filter(s => !exist.includes(s));
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
     const hMap = {
       'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts'],
       'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
-      'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le']
+      'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le'],
+      'ActivityLog': ['timestamp','user','action','details','target']
     };
     for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
   }
@@ -989,6 +1099,203 @@ async function writeSuivi(site_code, statut) {
     }
   } catch(e) { console.error('writeSuivi', e); }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  JOURNAL D'ACTIVITÉ
+// ─────────────────────────────────────────────────────────────
+// File d'attente en mémoire pour batcher les écritures (évite trop de requêtes)
+let _activityQueue = [];
+let _activityFlushTimer = null;
+
+function logActivity(action, details, target) {
+  if (!currentUser) return;
+  const entry = {
+    timestamp: new Date().toISOString(),
+    user: currentUser,
+    action: action || '',
+    details: details || '',
+    target: target || ''
+  };
+  _activityQueue.push(entry);
+  // Sauvegarder localement aussi (pour relecture offline)
+  try {
+    const local = JSON.parse(localStorage.getItem('actLog') || '[]');
+    local.push(entry);
+    // Garder les 200 derniers
+    if (local.length > 200) local.splice(0, local.length - 200);
+    localStorage.setItem('actLog', JSON.stringify(local));
+  } catch(e) {}
+
+  // Flush dans Sheets toutes les 5s (batché)
+  if (_activityFlushTimer) clearTimeout(_activityFlushTimer);
+  _activityFlushTimer = setTimeout(flushActivityLog, 5000);
+}
+
+async function flushActivityLog() {
+  if (!gTok || !_activityQueue.length) return;
+  const batch = _activityQueue.slice();
+  _activityQueue = [];
+  try {
+    const rows = batch.map(e => [e.timestamp, e.user, e.action, e.details, e.target]);
+    await sAppend('ActivityLog', rows);
+  } catch(e) {
+    // En cas d'échec, remettre dans la file
+    _activityQueue.unshift(...batch);
+    console.error('flushActivityLog', e);
+  }
+}
+
+// Lire le journal depuis Sheets (max 500 dernières lignes)
+async function loadActivityLog() {
+  if (!gTok) {
+    // Fallback : afficher uniquement le local
+    try { return JSON.parse(localStorage.getItem('actLog') || '[]').reverse(); } catch(e) { return []; }
+  }
+  try {
+    // Flush avant de lire pour avoir les données récentes
+    await flushActivityLog();
+    const d = await sGet('ActivityLog!A2:E');
+    const rows = (d.values || []).map(r => ({
+      timestamp: r[0] || '',
+      user: r[1] || '',
+      action: r[2] || '',
+      details: r[3] || '',
+      target: r[4] || ''
+    }));
+    // Plus récent en premier, limité à 500
+    return rows.reverse().slice(0, 500);
+  } catch(e) {
+    console.error('loadActivityLog', e);
+    try { return JSON.parse(localStorage.getItem('actLog') || '[]').reverse(); } catch(e) { return []; }
+  }
+}
+
+let _activityFilter = 'all';
+let _activityUserFilter = 'all';
+
+async function openActivityLog() {
+  // Squelette immédiat
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head">
+      <h2><i class="ti ti-history"></i> Journal d'activité</h2>
+      <button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="activity-loading" style="text-align:center;padding:40px;color:var(--text2)">
+        <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 12px"></div>
+        Chargement du journal…
+      </div>
+      <div id="activity-content" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <select id="actv-filter" onchange="_activityFilter=this.value;renderActivityList()" style="flex:1;min-width:130px">
+            <option value="all">Toutes les actions</option>
+            <option value="LOGIN">Connexions</option>
+            <option value="INVENTORY">Inventaire</option>
+            <option value="ADD">Ajouts</option>
+            <option value="EDIT">Modifications</option>
+            <option value="EXPORT">Exports</option>
+            <option value="RESET">Réinitialisations</option>
+          </select>
+          <select id="actv-user" onchange="_activityUserFilter=this.value;renderActivityList()" style="flex:1;min-width:130px"></select>
+        </div>
+        <div class="txt-xs" id="actv-count" style="margin-bottom:10px;font-weight:600"></div>
+        <div id="activity-list"></div>
+      </div>
+    </div>`);
+
+  const entries = await loadActivityLog();
+  window._activityEntries = entries;
+
+  // Remplir le sélecteur d'utilisateurs
+  const users = [...new Set(entries.map(e => e.user).filter(Boolean))].sort();
+  const userSel = document.getElementById('actv-user');
+  if (userSel) {
+    userSel.innerHTML = '<option value="all">Tous les utilisateurs</option>' + users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
+  }
+
+  document.getElementById('activity-loading').style.display = 'none';
+  document.getElementById('activity-content').style.display = '';
+  renderActivityList();
+}
+
+function renderActivityList() {
+  const entries = window._activityEntries || [];
+  let filtered = entries;
+  // Filtre par catégorie
+  if (_activityFilter !== 'all') {
+    const cat = _activityFilter;
+    const mapping = {
+      'LOGIN': ['LOGIN', 'LOGOUT'],
+      'INVENTORY': ['INVENTORY', 'TRANSFER'],
+      'ADD': ['ADD_ITEM', 'ADD_LOCATION', 'ADD_REF_ARTICLE', 'ADD_FAMILLE'],
+      'EDIT': ['EDIT_LOCATION', 'EDIT_ITEM'],
+      'EXPORT': ['EXPORT', 'EXPORT_FINAL'],
+      'RESET': ['RESET']
+    };
+    const allowed = mapping[cat] || [cat];
+    filtered = filtered.filter(e => allowed.includes(e.action));
+  }
+  // Filtre par utilisateur
+  if (_activityUserFilter !== 'all') {
+    filtered = filtered.filter(e => e.user === _activityUserFilter);
+  }
+
+  const list = document.getElementById('activity-list');
+  const cnt = document.getElementById('actv-count');
+  if (cnt) cnt.textContent = `${filtered.length} évènement${filtered.length > 1 ? 's' : ''}`;
+  if (!list) return;
+  if (!filtered.length) {
+    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">
+      <i class="ti ti-history" style="font-size:48px;opacity:.3;display:block;margin-bottom:10px"></i>
+      Aucune activité enregistrée
+    </div>`;
+    return;
+  }
+
+  const actionInfo = {
+    'LOGIN': { icon: 'ti-login', color: 'var(--accent)', label: 'Connexion' },
+    'LOGOUT': { icon: 'ti-logout', color: 'var(--text3)', label: 'Déconnexion' },
+    'INVENTORY': { icon: 'ti-clipboard-check', color: 'var(--success-txt)', label: 'Inventaire' },
+    'TRANSFER': { icon: 'ti-arrows-right-left', color: 'var(--warn-txt)', label: 'Transfert' },
+    'ADD_ITEM': { icon: 'ti-plus', color: 'var(--success-txt)', label: 'Ajout article' },
+    'ADD_LOCATION': { icon: 'ti-map-pin-plus', color: 'var(--success-txt)', label: 'Ajout emplacement' },
+    'ADD_REF_ARTICLE': { icon: 'ti-list', color: 'var(--accent)', label: 'Ajout référentiel' },
+    'ADD_FAMILLE': { icon: 'ti-folder-plus', color: 'var(--accent)', label: 'Nouvelle famille' },
+    'EDIT_LOCATION': { icon: 'ti-edit', color: 'var(--warn-txt)', label: 'Modification emplacement' },
+    'EDIT_ITEM': { icon: 'ti-edit', color: 'var(--warn-txt)', label: 'Modification article' },
+    'EXPORT': { icon: 'ti-file-export', color: 'var(--accent)', label: 'Export' },
+    'EXPORT_FINAL': { icon: 'ti-table-export', color: 'var(--accent)', label: 'Export final' },
+    'RESET': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Réinitialisation' }
+  };
+
+  // Grouper par jour pour faciliter la lecture
+  const byDay = {};
+  for (const e of filtered) {
+    const d = new Date(e.timestamp);
+    const dayKey = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (!byDay[dayKey]) byDay[dayKey] = [];
+    byDay[dayKey].push(e);
+  }
+
+  let html = '';
+  for (const [day, items] of Object.entries(byDay)) {
+    html += `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${esc(day)}</div>`;
+    html += items.map(e => {
+      const info = actionInfo[e.action] || { icon: 'ti-point', color: 'var(--text3)', label: e.action };
+      const time = new Date(e.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px">
+        <i class="ti ${info.icon}" style="color:${info.color};font-size:16px;margin-top:2px;flex-shrink:0"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${info.label}${e.target ? ' · ' + esc(e.target) : ''}</div>
+          ${e.details ? `<div class="txt-xs" style="margin-top:2px;word-break:break-word">${esc(e.details)}</div>` : ''}
+          <div class="txt-xs" style="margin-top:3px"><i class="ti ti-user" style="font-size:10px"></i> ${esc(e.user)} · ${time}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  list.innerHTML = html;
+}
+
 async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
@@ -1033,6 +1340,7 @@ async function syncNow() {
   try {
     await ensureSheets();
     await pushPending();
+    await flushActivityLog();
     await pullAll();
     lastSync = Date.now();
     invalidateStatsCache();
@@ -1210,12 +1518,117 @@ function renderHome() {
   const inv = Object.keys(updates).length;
   const pct = tot ? Math.round(inv / tot * 100) : 0;
   const name = googleProfile.name || currentUser || '';
+
+  // ── STATISTIQUES UTILISATEUR ──
+  const myStats = computeUserStats(currentUser);
+
   main.innerHTML = `<div style="padding:8px 0 20px;max-width:500px;margin:0 auto">
-    <div style="margin-bottom:24px"><div style="font-size:26px;font-weight:800;letter-spacing:-.02em">Bonjour${name ? ' ' + name.split(' ')[0] : ''} 👋</div><div style="font-size:14px;color:var(--text2);margin-top:6px;font-weight:500">Inventaire Immobilisations</div></div>
-    ${tot ? `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:20px;margin-bottom:24px;box-shadow:var(--shadow-sm)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:12px;color:var(--text3);margin-top:2px">${inv.toLocaleString('fr-FR')} / ${tot.toLocaleString('fr-FR')} articles</div></div><div style="font-size:28px;font-weight:800;color:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'}; letter-spacing:-.02em">${pct}<span style="font-size:16px;font-weight:600">%</span></div></div><div class="pbar" style="height:12px;border-radius:6px"><div class="pbar-fill" style="width:${pct}%;border-radius:6px;background:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'}"></div></div></div>` : '<div class="alert alert-warn" style="margin-bottom:20px"><i class="ti ti-alert-triangle"></i>Aucune donnée chargée — connexion Google Sheets en cours…</div>'}
-    <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l’inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
-    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button><button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button><button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button></div>
+    <div style="margin-bottom:24px"><div style="font-size:26px;font-weight:800;letter-spacing:-.02em">Bonjour${name ? ' ' + esc(name.split(' ')[0]) : ''} 👋</div><div style="font-size:14px;color:var(--text2);margin-top:6px;font-weight:500">Inventaire Immobilisations</div></div>
+    ${tot ? `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:20px;margin-bottom:14px;box-shadow:var(--shadow-sm)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:14px;font-weight:700">Avancement global</div><div style="font-size:12px;color:var(--text3);margin-top:2px">${inv.toLocaleString('fr-FR')} / ${tot.toLocaleString('fr-FR')} articles</div></div><div style="font-size:28px;font-weight:800;color:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'}; letter-spacing:-.02em">${pct}<span style="font-size:16px;font-weight:600">%</span></div></div><div class="pbar" style="height:12px;border-radius:6px"><div class="pbar-fill" style="width:${pct}%;border-radius:6px;background:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'}"></div></div></div>` : '<div class="alert alert-warn" style="margin-bottom:20px"><i class="ti ti-alert-triangle"></i>Aucune donnée chargée — connexion Google Sheets en cours…</div>'}
+
+    ${myStats.total > 0 ? renderMyStatsCard(myStats) : ''}
+
+    <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l'inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">${can('canSuivi') ? '<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button>' : ''}<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button>${can('canExport') ? '<button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button>' : ''}<button class="btn btn-sm" onclick="openActivityLog()"><i class="ti ti-history"></i> Journal</button></div>
   </div>`;
+}
+
+// ─── Statistiques personnelles de l'utilisateur ───
+function computeUserStats(user) {
+  if (!user) return { total: 0 };
+  // Articles inventoriés par cet utilisateur
+  const myUpd = [];
+  for (const cbi in updates) {
+    if (updates[cbi].by === user) myUpd.push({ cbi, ts: updates[cbi].ts });
+  }
+  const total = myUpd.length;
+  if (total === 0) return { total: 0 };
+
+  // Aujourd'hui (date locale)
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = startOfDay - (now.getDay() === 0 ? 6 : now.getDay() - 1) * 86400000;
+  const today = myUpd.filter(u => u.ts >= startOfDay).length;
+  const thisWeek = myUpd.filter(u => u.ts >= startOfWeek).length;
+
+  // Vitesse : articles dans la dernière heure
+  const oneHourAgo = Date.now() - 3600 * 1000;
+  const lastHour = myUpd.filter(u => u.ts >= oneHourAgo).length;
+
+  // Bureaux terminés cette semaine par moi
+  const bureauxFinis = new Set();
+  for (const key in LOC_INDEX) {
+    const items = LOC_INDEX[key];
+    if (!items.length) continue;
+    const allDone = items.every(r => updates[r.cbi]);
+    if (!allDone) continue;
+    // Au moins un article inventorié par moi dans la semaine
+    const myInWeek = items.some(r => {
+      const u = updates[r.cbi];
+      return u && u.by === user && u.ts >= startOfWeek;
+    });
+    if (myInWeek) bureauxFinis.add(key);
+  }
+
+  // Classement parmi les utilisateurs
+  const byUser = {};
+  for (const cbi in updates) {
+    const by = updates[cbi].by || '?';
+    byUser[by] = (byUser[by] || 0) + 1;
+  }
+  const sortedUsers = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
+  const myRank = sortedUsers.findIndex(([n]) => n === user) + 1;
+  const totalUsers = sortedUsers.length;
+
+  return { total, today, thisWeek, lastHour, bureauxFinis: bureauxFinis.size, myRank, totalUsers, sortedUsers };
+}
+
+function renderMyStatsCard(s) {
+  return `<div style="background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;border-radius:var(--radius-xl);padding:18px;margin-bottom:14px;box-shadow:var(--shadow-md)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;font-weight:600;opacity:.85;letter-spacing:.05em;text-transform:uppercase">Mes performances</div>
+        <div style="font-size:18px;font-weight:700;margin-top:2px">${s.total.toLocaleString('fr-FR')} article${s.total > 1 ? 's' : ''} inventorié${s.total > 1 ? 's' : ''}</div>
+      </div>
+      ${s.myRank ? `<div style="text-align:right">
+        <div style="font-size:22px;font-weight:800">#${s.myRank}</div>
+        <div style="font-size:10px;opacity:.85">sur ${s.totalUsers}</div>
+      </div>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:rgba(255,255,255,.12);border-radius:var(--radius);padding:12px">
+      <div style="text-align:center"><div style="font-size:20px;font-weight:800">${s.today}</div><div style="font-size:10px;opacity:.85">Aujourd'hui</div></div>
+      <div style="text-align:center"><div style="font-size:20px;font-weight:800">${s.thisWeek}</div><div style="font-size:10px;opacity:.85">Cette semaine</div></div>
+      <div style="text-align:center"><div style="font-size:20px;font-weight:800">${s.bureauxFinis}</div><div style="font-size:10px;opacity:.85">Bureaux finis</div></div>
+    </div>
+    ${s.lastHour > 0 ? `<div style="margin-top:10px;font-size:11px;opacity:.9;text-align:center"><i class="ti ti-bolt"></i> ${s.lastHour} dans la dernière heure</div>` : ''}
+    <button class="btn btn-sm" onclick="openTeamRanking()" style="width:100%;margin-top:12px;background:rgba(255,255,255,.18);color:#fff;border:none;backdrop-filter:blur(10px)">
+      <i class="ti ti-trophy"></i> Voir le classement équipe
+    </button>
+  </div>`;
+}
+
+function openTeamRanking() {
+  const s = computeUserStats(currentUser);
+  if (!s.sortedUsers || !s.sortedUsers.length) { showToast('Aucune donnée', 'info'); return; }
+  const max = s.sortedUsers[0][1];
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head"><h2><i class="ti ti-trophy"></i> Classement équipe</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="txt-xs" style="margin-bottom:14px;font-weight:600">Articles inventoriés par utilisateur</div>
+      ${s.sortedUsers.map(([user, count], i) => {
+        const isMe = user === currentUser;
+        const pct = Math.round(count / max * 100);
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="display:inline-block;width:22px;text-align:center;color:var(--text3);font-weight:700">${i+1}</span>`;
+        return `<div style="background:${isMe ? 'var(--accent-bg)' : 'var(--bg)'};border:1px solid ${isMe ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);padding:10px 14px;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <div style="font-size:18px;flex-shrink:0">${medal}</div>
+            <div style="flex:1;min-width:0;font-size:13px;font-weight:${isMe ? 700 : 500}">${esc(user)}${isMe ? ' (vous)' : ''}</div>
+            <div style="font-size:14px;font-weight:700;color:${isMe ? 'var(--accent)' : 'var(--text)'}">${count.toLocaleString('fr-FR')}</div>
+          </div>
+          <div class="pbar" style="height:5px"><div class="pbar-fill" style="width:${pct}%;background:${isMe ? 'var(--accent)' : 'var(--text3)'}"></div></div>
+        </div>`;
+      }).join('')}
+    </div>`);
 }
 function renderMain() {
   const main = document.getElementById('main');
@@ -1830,6 +2243,7 @@ async function saveRefArticle() {
   closeModal();
   renderArticlesView();  // refresh la liste
   showToast(`Article "${artNom}" ajouté au référentiel`, 'success');
+  logActivity('ADD_REF_ARTICLE', `${artNom} dans ${famNom}`, article_id);
 }
 
 function renderArticlesView() {
@@ -2446,6 +2860,7 @@ async function confirmTransferAndUpdate(cbi) {
   renderMain();
   renderDataStatus();
   showToast('✓ Article transféré et inventorié', 'success');
+  logActivity('TRANSFER', `${oldLoc} → ${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}`, cbi);
 }
 
 // ---------- EDIT/ADD ITEMS ----------
@@ -2532,6 +2947,7 @@ async function saveUpd(cbi) {
   renderMain();
   renderDataStatus();
   showToast('✓ Article mis à jour', 'success');
+  logActivity('INVENTORY', `${item.art || 'Article'} - ${u.serv}${u.trouve ? ' - ' + u.trouve : ''}`, cbi);
   await writeUpd(cbi, u);
 }
 function openAddItem(prefilledCode) {
@@ -2744,6 +3160,7 @@ async function saveNew() {
   renderMain();
   renderDataStatus();
   showToast('Article ajouté', 'success');
+  logActivity('ADD_ITEM', `${artNom} (${famNom}) - ${curLoc.bureau}`, cbi);
   await writeNI(item);
   await writeUpd(cbi, updates[cbi]);
 }
@@ -2787,7 +3204,7 @@ function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'da
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
-function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); }
+function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; const before = Object.keys(updates).length; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); logActivity('RESET', `${before} mises à jour supprimées`, 'local'); }
 // ─────────────────────────────────────────────────────────────
 //  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
 // ─────────────────────────────────────────────────────────────
@@ -3053,6 +3470,7 @@ async function generateExportFinal() {
       await sPut(`${SH_EXPORT}!A${i + 2}:W${i + batch.length + 1}`, batch);
     }
     showToast(`Export final généré : ${rows.length} lignes dans "${SH_EXPORT}"`, 'success');
+    logActivity('EXPORT_FINAL', `${rows.length} lignes exportées`, SH_EXPORT);
   } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); console.error(e); }
 }
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="none" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
@@ -3316,6 +3734,7 @@ async function saveEditLocation(btn) {
   renderDataStatus();
   const labelMap = { site: 'Site', bat: 'Bâtiment', etage: 'Étage', bureau: 'Bureau' };
   showToast(`${labelMap[level]} modifié — ${count} article(s) impacté(s)`, 'success');
+  logActivity('EDIT_LOCATION', `${labelMap[level]}: renommage (${count} articles)`, `${level}`);
 }
 
 // ---------- OPEN ADD LOCATION ----------
@@ -3384,6 +3803,7 @@ async function saveLoc() {
     closeModal();
     invalidateStatsCache();
     showToast(`Emplacement ${bureau} créé`, 'success');
+    logActivity('ADD_LOCATION', `${site} › ${bat} › ${etage} › ${bureau}`, emp_id);
     if (currentView === 'locations') renderLocationsView();
     else renderMain();
   } catch(e) {
@@ -3439,6 +3859,7 @@ function init() {
         renderDataStatus();
         await loadFromSheets();
         renderUserBadge();
+        logActivity('LOGIN', `Connexion Google (${googleProfile.email || ''})`, '');
       })();
       return;
     }
