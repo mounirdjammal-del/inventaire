@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 9.5 -->
+<!-- VERSION 9.6 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -589,7 +589,16 @@ function showToast(msg, type = 'info') {
 function showModal(html) {
   document.getElementById('modal').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
 }
-function closeModal() { document.getElementById('modal').innerHTML = ''; }
+function closeModal() {
+  document.getElementById('modal').innerHTML = '';
+  // Refocus auto sur la zone de scan inventaire si elle est visible (élimine la latence après scan)
+  setTimeout(() => {
+    const scanInp = document.getElementById('scan-inp');
+    if (scanInp && document.activeElement !== scanInp && scanInp.offsetParent !== null) {
+      scanInp.focus();
+    }
+  }, 50);
+}
 
 function saveLocal() {
   try { localStorage.setItem(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, t: Date.now() })); } catch(e) {}
@@ -2996,6 +3005,7 @@ async function confirmTransferAndUpdate(cbi) {
   }
 
   invalidateStatsCache();
+  invalidateAllItemsCache();
   saveLocal();
   closeModal();
   renderMain();
@@ -3219,6 +3229,7 @@ async function saveUpd(cbi) {
 
   updates[cbi] = u;
   invalidateStatsCache();
+  invalidateAllItemsCache();
   saveLocal();
   closeModal();
   renderMain();
@@ -3500,10 +3511,22 @@ async function saveNew() {
   const locKey = item.site+'|'+item.bat+'|'+item.etage+'|'+item.bureau;
   if(!LOC_INDEX[locKey]) LOC_INDEX[locKey]=[];
   LOC_INDEX[locKey].push(item);
+  // Mettre à jour HIER et FAMS pour que listes déroulantes incluent le nouveau
+  if (!HIER[item.site]) HIER[item.site] = {};
+  if (!HIER[item.site][item.bat]) HIER[item.site][item.bat] = {};
+  if (!HIER[item.site][item.bat][item.etage]) HIER[item.site][item.bat][item.etage] = [];
+  if (!HIER[item.site][item.bat][item.etage].includes(item.bureau)) {
+    HIER[item.site][item.bat][item.etage].push(item.bureau);
+    HIER[item.site][item.bat][item.etage].sort();
+  }
+  if (item.fam && item.art) {
+    if (!FAMS[item.fam]) FAMS[item.fam] = [];
+    if (!FAMS[item.fam].includes(item.art)) FAMS[item.fam].push(item.art);
+  }
   invalidateStatsCache();
   saveLocal();
   closeModal();
-  renderMain();
+  renderMain();  // Affiche la table du bureau actuel qui inclut maintenant le nouvel article
   renderDataStatus();
   showToast('Article ajouté', 'success');
   logActivity('ADD_ITEM', `${artNom} (${famNom}) - ${curLoc.bureau}`, cbi);
@@ -4170,6 +4193,13 @@ async function saveLoc() {
     if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
     if (!HIER[site][bat][etage].includes(bureau)) HIER[site][bat][etage].push(bureau);
     HIER[site][bat][etage].sort();
+    // Rafraîchir le sélecteur de site (si nouveau site)
+    const ss = document.getElementById('sel-site');
+    if (ss) {
+      const currentVal = ss.value;
+      ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+      if (currentVal) ss.value = currentVal;
+    }
 
     saveLocal();
     closeModal();
