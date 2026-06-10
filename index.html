@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 10.3 -->
+<!-- VERSION 10.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1229,14 +1229,22 @@ async function writeUpd(cbi, u) {
   const criteres = extractCriteresFromObs(u.obs || '');
   // Observation nettoyée : retirer la ligne "État observé:" pour ne pas la dupliquer
   const obsClean = (u.obs || '').split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
-  // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres
-  const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', '', u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')];
+  // Récupérer les URLs photos depuis le cache local
+  const photoLinks = (photos[cbi] || []).map(p => p.viewUrl).filter(Boolean).join('\n');
   if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); renderPendingIndicator(); return; }
   try {
     // UPSERT : chercher si une ligne existe déjà pour ce CBI
-    const d = await sGet('Updates!A2:A');
+    // On lit aussi la colonne M (photos) pour préserver les photos existantes si pas en local
+    const d = await sGet('Updates!A2:M');
     const rows = d.values || [];
     const idx = rows.findIndex(r => r[0] === cbi);
+    // Préserver les photos déjà dans la feuille si on n'en a pas localement
+    let finalPhotos = photoLinks;
+    if (!finalPhotos && idx >= 0 && rows[idx][12]) {
+      finalPhotos = rows[idx][12];
+    }
+    // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres
+    const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', finalPhotos, u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')];
     if (idx >= 0) {
       // Mise à jour de la ligne existante
       await sPut(`Updates!A${idx + 2}:P${idx + 2}`, [row]);
@@ -1725,12 +1733,31 @@ function buildHier() {
     if (r.cbi) CBI_INDEX[r.cbi] = r;
     if (r.cbe) CBE_INDEX[r.cbe] = r;
   }
+  // Inclure aussi TOUS les emplacements du référentiel REL_EMPS (même vides, sans articles)
+  for (const eid in REL_EMPS) {
+    const e = REL_EMPS[eid];
+    const site = (REL_SITES[e.site_id] || {}).site_code;
+    const bat = (REL_BATS[e.bat_id] || {}).bat_nom;
+    if (!site || !bat || !e.bureau) continue;
+    if (!HIER[site]) HIER[site] = {};
+    if (!HIER[site][bat]) HIER[site][bat] = {};
+    if (!HIER[site][bat][e.etage]) HIER[site][bat][e.etage] = new Set();
+    HIER[site][bat][e.etage].add(e.bureau);
+  }
+  // Inclure aussi tous les articles du référentiel REL_ARTS dans FAMS
+  for (const aid in REL_ARTS) {
+    const a = REL_ARTS[aid];
+    if (a.famille_nom && a.article_nom) {
+      if (!FAMS[a.famille_nom]) FAMS[a.famille_nom] = new Set();
+      FAMS[a.famille_nom].add(a.article_nom);
+    }
+  }
   for (const s in HIER) for (const b in HIER[s]) for (const e in HIER[s][b]) HIER[s][b][e] = [...HIER[s][b][e]].sort();
   for (const f in FAMS) FAMS[f] = [...FAMS[f]].sort();
   // Pré-calculer les stats par site/bat/etage
   _statsCache = {};
   const ss = document.getElementById('sel-site');
-  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${s}">${s}</option>`).join('');
+  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
 }
 let _statsCache = {};
 function getStatsFor(site, bat, etage, bureau) {
@@ -2584,6 +2611,9 @@ async function saveRefArticle() {
     catch(e) { console.error('Append Article', e); }
   }
 
+  // Reconstruire la hiérarchie pour que FAMS soit à jour partout
+  buildHier();
+  invalidateAllItemsCache();
   saveLocal();
   closeModal();
   renderArticlesView();  // refresh la liste
@@ -2780,7 +2810,7 @@ function buildDashBureauData() {
       for (const etage of Object.keys(HIER[site][bat]).sort()) {
         for (const bureau of HIER[site][bat][etage]) {
           const stats = getStatsFor(site, bat, etage, bureau);
-          if (!stats.total) continue;
+          // Inclure aussi les bureaux vides (0 article) — ils apparaîtront en "À INVENTORIER"
           const statut = getBureauDashStatut(stats);
           const info = getBureauLastInfo(site, bat, etage, bureau);
           data.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
@@ -2883,18 +2913,18 @@ function renderDashboardList() {
   if (UF.dashBatFilter !== 'all') data = data.filter(b => b.bat === UF.dashBatFilter);
   if (UF.dashEtageFilter !== 'all') data = data.filter(b => b.etage === UF.dashEtageFilter);
 
-  // Compteurs par statut
+  // Compteurs par statut (VIDE = bureau sans articles, comptabilisé comme "non traité")
   const counts = {
     all: data.length,
     en_cours: data.filter(b => b.statut === 'EN COURS').length,
-    non_traite: data.filter(b => b.statut === 'NON TRAITE').length,
+    non_traite: data.filter(b => b.statut === 'NON TRAITE' || b.statut === 'VIDE').length,
     termine: data.filter(b => b.statut === 'TERMINE').length
   };
 
   // Filtre par statut
   let filtered = data;
   if (UF.dashFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
-  else if (UF.dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE');
+  else if (UF.dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE' || b.statut === 'VIDE');
   else if (UF.dashFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
 
   // Filtre par recherche
@@ -4070,18 +4100,18 @@ function renderSuiviList() {
   // Filtre par site
   if (UF.suiviSiteFilter !== 'all') data = data.filter(b => b.site === UF.suiviSiteFilter);
 
-  // Compteurs par statut
+  // Compteurs par statut (VIDE = bureau sans articles)
   const counts = {
     all: data.length,
     en_cours: data.filter(b => b.statut === 'EN COURS').length,
-    non_ouvert: data.filter(b => b.statut === 'NON OUVERT').length,
+    non_ouvert: data.filter(b => b.statut === 'NON OUVERT' || b.statut === 'VIDE').length,
     termine: data.filter(b => b.statut === 'TERMINE').length
   };
 
   // Filtre par statut
   let filtered = data;
   if (UF.suiviFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
-  else if (UF.suiviFilter === 'non_ouvert') filtered = data.filter(b => b.statut === 'NON OUVERT');
+  else if (UF.suiviFilter === 'non_ouvert') filtered = data.filter(b => b.statut === 'NON OUVERT' || b.statut === 'VIDE');
   else if (UF.suiviFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
 
   // Filtre par recherche
@@ -4552,27 +4582,17 @@ async function saveLoc() {
       return;
     }
 
-    // Mettre à jour la hiérarchie locale
-    if (!HIER[site]) HIER[site] = {};
-    if (!HIER[site][bat]) HIER[site][bat] = {};
-    if (!HIER[site][bat][etage]) HIER[site][bat][etage] = [];
-    if (!HIER[site][bat][etage].includes(bureau)) HIER[site][bat][etage].push(bureau);
-    HIER[site][bat][etage].sort();
-    // Rafraîchir le sélecteur de site (si nouveau site)
-    const ss = document.getElementById('sel-site');
-    if (ss) {
-      const currentVal = ss.value;
-      ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-      if (currentVal) ss.value = currentVal;
-    }
+    // Reconstruire complètement la hiérarchie pour inclure le nouveau site/bât/étage/bureau
+    buildHier();
+    invalidateStatsCache();
+    invalidateAllItemsCache();
 
     saveLocal();
     closeModal();
-    invalidateStatsCache();
     showToast(`Emplacement ${bureau} créé`, 'success');
     logActivity('ADD_LOCATION', `${site} › ${bat} › ${etage} › ${bureau}`, emp_id);
-    if (currentView === 'locations') renderLocationsView();
-    else renderMain();
+    // Rafraîchir la vue actuelle (Avancement, Suivi, Emplacements, Inventaire)
+    refreshCurrentView();
   } catch(e) {
     showToast('Erreur création: ' + e.message, 'danger');
     console.error(e);
