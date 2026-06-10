@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 10.1 -->
+<!-- VERSION 10.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -572,32 +572,104 @@ const CRITERES_ETAT = {
 };
 
 // Génère le HTML d'une aide dépliable décrivant les critères
-function renderEtatGuide() {
-  return `<details style="margin-top:6px;background:var(--bg2);border-radius:var(--radius);font-size:11px">
+// Génère un panneau dépliable avec cases à cocher des critères
+// prefix: 'e' pour modale Mise à jour, 'n' pour Ajout, 't' pour Transfert
+// preselected: critères déjà cochés (depuis observation existante)
+function renderEtatGuide(prefix, preselected) {
+  const selected = preselected || [];
+  const isChecked = (c) => selected.includes(c) ? 'checked' : '';
+  const total = CRITERES_ETAT.VETUSTE.length + CRITERES_ETAT.MOYEN.length + CRITERES_ETAT.BON.length;
+  const cnt = selected.length;
+  const renderGroup = (label, color, items, key) => `
+    <div style="margin-bottom:8px">
+      <div style="font-weight:700;color:${color};margin-bottom:4px;font-size:11px">${label}</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${items.map((c, i) => `
+          <label style="display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:4px 6px;border-radius:4px;background:var(--bg);font-size:11px;line-height:1.3">
+            <input type="checkbox" class="crit-${prefix}" data-cat="${key}" data-crit="${esc(c)}" ${isChecked(c)} onchange="onCritChange('${prefix}')" style="margin-top:2px;flex-shrink:0">
+            <span>${esc(c)}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>`;
+  return `<details style="margin-top:6px;background:var(--bg2);border-radius:var(--radius);font-size:11px" ${cnt > 0 ? 'open' : ''}>
     <summary style="cursor:pointer;padding:8px 10px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px;color:var(--text2)">
-      <i class="ti ti-help"></i> Guide des critères de l'état
+      <i class="ti ti-checklist"></i> Critères d'état observés
+      ${cnt > 0 ? `<span style="background:var(--accent);color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:auto">${cnt}</span>` : `<span style="color:var(--text3);font-size:10px;margin-left:auto">cliquer pour cocher</span>`}
     </summary>
     <div style="padding:6px 12px 10px;border-top:1px solid var(--border)">
-      <div style="margin-bottom:8px">
-        <div style="font-weight:700;color:var(--danger-txt);margin-bottom:4px">⚠ VÉTUSTE</div>
-        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
-          ${CRITERES_ETAT.VETUSTE.map(c => `<li>${esc(c)}</li>`).join('')}
-        </ul>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-weight:700;color:var(--warn-txt);margin-bottom:4px">≈ MOYEN</div>
-        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
-          ${CRITERES_ETAT.MOYEN.map(c => `<li>${esc(c)}</li>`).join('')}
-        </ul>
-      </div>
-      <div>
-        <div style="font-weight:700;color:var(--success-txt);margin-bottom:4px">✓ BON</div>
-        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
-          ${CRITERES_ETAT.BON.map(c => `<li>${esc(c)}</li>`).join('')}
-        </ul>
-      </div>
+      <div class="alert alert-info" style="margin:0 0 8px;font-size:10px;padding:6px 8px"><i class="ti ti-info-circle" style="font-size:11px"></i><div>Cochez les critères. L'état est calculé automatiquement et les critères sont ajoutés à l'observation.</div></div>
+      ${renderGroup('⚠ VÉTUSTE', 'var(--danger-txt)', CRITERES_ETAT.VETUSTE, 'VETUSTE')}
+      ${renderGroup('≈ MOYEN', 'var(--warn-txt)', CRITERES_ETAT.MOYEN, 'MOYEN')}
+      ${renderGroup('✓ BON', 'var(--success-txt)', CRITERES_ETAT.BON, 'BON')}
     </div>
   </details>`;
+}
+
+// Détermine l'état recommandé d'après les critères cochés
+function computeEtatFromCriteres(criteres) {
+  if (!criteres || !criteres.length) return null;
+  // Règle : si un critère VETUSTE est coché → VETUSTE prioritaire
+  for (const c of criteres) if (CRITERES_ETAT.VETUSTE.includes(c)) return 'VETUSTE';
+  // Sinon si un critère MOYEN est coché → MOYEN
+  for (const c of criteres) if (CRITERES_ETAT.MOYEN.includes(c)) return 'MOYEN';
+  // Sinon BON
+  return 'BON';
+}
+
+// Réagit au changement d'une case à cocher dans une modale
+function onCritChange(prefix) {
+  const boxes = document.querySelectorAll('.crit-' + prefix + ':checked');
+  const criteres = [...boxes].map(b => b.dataset.crit);
+  const etat = computeEtatFromCriteres(criteres);
+  // Auto-sélection de la renouvelabilité
+  if (etat) {
+    const sel = document.getElementById(prefix + '-rv');
+    if (sel) sel.value = etat;
+  }
+  // Mise à jour de l'observation (ajouter / retirer la mention "État: ...")
+  const obsEl = document.getElementById(prefix + '-obs');
+  if (obsEl) {
+    let obs = obsEl.value || '';
+    // Retirer toute ligne précédente commençant par "État observé:"
+    obs = obs.split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
+    if (criteres.length) {
+      const line = 'État observé: ' + criteres.join(' ; ');
+      obs = obs ? line + '\n' + obs : line;
+    }
+    obsEl.value = obs;
+  }
+  // Mise à jour visuelle du compteur dans le summary
+  const det = document.querySelector('.crit-' + prefix)?.closest('details');
+  if (det) {
+    const sum = det.querySelector('summary span:last-child');
+    if (sum) {
+      if (criteres.length) {
+        sum.style.background = 'var(--accent)';
+        sum.style.color = '#fff';
+        sum.style.padding = '1px 7px';
+        sum.style.borderRadius = '10px';
+        sum.textContent = criteres.length;
+      } else {
+        sum.style.background = '';
+        sum.style.color = 'var(--text3)';
+        sum.style.padding = '';
+        sum.textContent = 'cliquer pour cocher';
+      }
+    }
+  }
+}
+
+// Extrait les critères pré-cochés depuis une observation existante
+function extractCriteresFromObs(obs) {
+  if (!obs) return [];
+  const lines = obs.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('État observé:')) {
+      return line.substring('État observé:'.length).split(';').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
 }
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
 const SH_EXPORT = 'ExportFinal';
@@ -3156,10 +3228,10 @@ function openTransferModal(item) {
       
       <!-- Formulaire de mise à jour (comme openEditItem) -->
       <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
-      ${renderEtatGuide()}
       <div class="form-group" style="margin-top:14px"><label class="form-label">N° Amendis</label><input type="text" id="t-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis"></div>
       <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${esc(obs)}</textarea></div>
-      <div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
+      ${renderEtatGuide('t', extractCriteresFromObs(obs))}
+      <div class="form-group" style="margin-top:14px"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
       ${renderPhotoSection(item.cbi)}
 
       <div class="modal-actions">
@@ -3327,7 +3399,7 @@ function openEditItem(item) {
       </div>
     </details>
 
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide()}<div class="form-group" style="margin-top:14px"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide('e', extractCriteresFromObs(obs))}<div class="form-group" style="margin-top:14px"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
 
   // Stocker la liste complète d'articles pour les datalists dépliables
   window._E_ALL_ARTICLES = allArticles;
@@ -3575,12 +3647,12 @@ function openAddItem(prefilledCode) {
           <select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select>
         </div>
       </div>
-      ${renderEtatGuide()}
 
       <div class="form-group" style="margin-top:14px">
         <label class="form-label">Observation</label>
         <textarea id="n-obs" rows="2"></textarea>
       </div>
+      ${renderEtatGuide('n', [])}
 
       <!-- Section photos (collectées en mémoire, uploadées après création) -->
       <div class="form-group">
