@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 9.8 -->
+<!-- VERSION 10.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -548,6 +548,57 @@ function can(permission) { return !!(PERMISSIONS[currentRole] || PERMISSIONS.use
 
 const ES = ['EN SERVICE','HORS SERVICE','MIS AU REBUT'];
 const ER = ['BON','MOYEN','VETUSTE'];
+
+// Grille des critères pour aider à choisir l'état de renouvelabilité
+const CRITERES_ETAT = {
+  VETUSTE: [
+    'Usure visible : cassure, fissure, détachement, gonflement, couleurs non homogènes (partiel ou général)',
+    'Manque de stabilité : boitement, problème de fixation',
+    'Surface à plusieurs éraflures',
+    'Surface à plusieurs inscriptions écrites',
+    'Déchirures',
+    'Taches multiples',
+    'Manque d\u2019une pièce du mobilier'
+  ],
+  MOYEN: [
+    'Aucune trace de vétusté (cassure, fissure, gonflement) ni instabilité',
+    'Faibles éraflures',
+    'Faibles taches',
+    'Faibles inscriptions en surface'
+  ],
+  BON: [
+    'Aucune trace de vétusté de la liste précédente'
+  ]
+};
+
+// Génère le HTML d'une aide dépliable décrivant les critères
+function renderEtatGuide() {
+  return `<details style="margin-top:6px;background:var(--bg2);border-radius:var(--radius);font-size:11px">
+    <summary style="cursor:pointer;padding:8px 10px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px;color:var(--text2)">
+      <i class="ti ti-help"></i> Guide des critères de l'état
+    </summary>
+    <div style="padding:6px 12px 10px;border-top:1px solid var(--border)">
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;color:var(--danger-txt);margin-bottom:4px">⚠ VÉTUSTE</div>
+        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
+          ${CRITERES_ETAT.VETUSTE.map(c => `<li>${esc(c)}</li>`).join('')}
+        </ul>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-weight:700;color:var(--warn-txt);margin-bottom:4px">≈ MOYEN</div>
+        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
+          ${CRITERES_ETAT.MOYEN.map(c => `<li>${esc(c)}</li>`).join('')}
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:700;color:var(--success-txt);margin-bottom:4px">✓ BON</div>
+        <ul style="margin:0;padding-left:18px;color:var(--text2);line-height:1.4">
+          ${CRITERES_ETAT.BON.map(c => `<li>${esc(c)}</li>`).join('')}
+        </ul>
+      </div>
+    </div>
+  </details>`;
+}
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
 const SH_EXPORT = 'ExportFinal';
 const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
@@ -1039,6 +1090,7 @@ async function pullAll() {
 
     buildHier();
     invalidateAllItemsCache();
+    invalidateCbeIndex();
     invalidateStatsCache();
     saveLocal();
   } catch(e) {
@@ -1070,6 +1122,27 @@ function findSiteIdByCode(site_code) {
   }
   return null;
 }
+
+// Helper : récupère le CBE (code barre emplacement) d'un bureau
+// Construit un index en cache pour rapidité
+let _EMP_CBE_INDEX = null;
+function _buildEmpCbeIndex() {
+  _EMP_CBE_INDEX = {};
+  for (const eid in REL_EMPS) {
+    const e = REL_EMPS[eid];
+    if (!e.cbe) continue;
+    const sCode = (REL_SITES[e.site_id] || {}).site_code;
+    const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
+    if (sCode && bNom) {
+      _EMP_CBE_INDEX[`${sCode}|${bNom}|${e.etage}|${e.bureau}`] = e.cbe;
+    }
+  }
+}
+function getCbeFromLoc(site, bat, etage, bureau) {
+  if (!_EMP_CBE_INDEX) _buildEmpCbeIndex();
+  return _EMP_CBE_INDEX[`${site}|${bat}|${etage}|${bureau}`] || '';
+}
+function invalidateCbeIndex() { _EMP_CBE_INDEX = null; }
 
 async function writeUpd(cbi, u) {
   const item = findItemByCbi(cbi) || {};
@@ -1798,6 +1871,8 @@ function renderMain() {
   const pct = items.length ? Math.round(inv / items.length * 100) : 0;
   const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)';
 
+  const curCbe = getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
+
   main.innerHTML = `
     <!-- Bandeau emplacement actuel -->
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
@@ -1806,6 +1881,7 @@ function renderMain() {
           <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Emplacement actuel</div>
           <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">${esc(curLoc.bureau)}</div>
           <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(curLoc.site)} › ${esc(curLoc.bat)} › ${esc(curLoc.etage)}</div>
+          ${curCbe ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:11px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:3px 8px;border-radius:8px"><i class="ti ti-barcode" style="font-size:12px"></i>${esc(curCbe)}</div>` : ''}
         </div>
         ${can('canEditLocation') ? `<button class="btn btn-sm" onclick="openEditLocation('${esc(curLoc.site)}','${esc(curLoc.bat)}','${esc(curLoc.etage)}','${esc(curLoc.bureau)}')" title="Modifier cet emplacement" style="min-height:36px;padding:0 10px"><i class="ti ti-edit" style="font-size:16px"></i></button>` : ''}
         <div style="text-align:right">
@@ -1906,14 +1982,6 @@ function renderInventoryHome() {
       <div style="font-size:28px;font-weight:800;color:${pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)'};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
     </div>
 
-    <!-- Sélection rapide d'emplacement -->
-    <div style="background:var(--accent-bg);border:1px solid var(--info-ring);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:18px">
-      <div style="font-size:13px;font-weight:700;color:var(--info-txt);margin-bottom:8px"><i class="ti ti-map-pin"></i> Démarrer / continuer un inventaire</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Sélectionnez un bureau via le menu ou scannez son code barre</div>
-      <button class="btn btn-primary btn-sm" onclick="toggleSidebar()" style="width:auto"><i class="ti ti-menu-2"></i> Choisir un emplacement</button>
-      <button class="btn btn-sm" onclick="openScanLibre()" style="margin-left:8px"><i class="ti ti-scan"></i> Scanner</button>
-    </div>
-
     ${enCours.length ? `
     <!-- Inventaires en cours -->
     <div style="margin-bottom:18px">
@@ -1921,12 +1989,15 @@ function renderInventoryHome() {
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn-txt);animation:pulse 1.5s infinite"></span>
         <div style="font-size:14px;font-weight:700">En cours (${enCours.length})</div>
       </div>
-      ${enCours.slice(0, 10).map(b => `
+      ${enCours.slice(0, 10).map(b => {
+        const cbeStr = getCbeFromLoc(b.site, b.bat, b.etage, b.bureau);
+        return `
         <div class="hier-row clickable" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" style="margin-bottom:8px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer" onclick="resumeInventory(this.parentElement)">
             <div style="flex:1;min-width:0">
               <div style="font-size:14px;font-weight:700;margin-bottom:3px">${esc(b.bureau)}</div>
               <div class="txt-xs">${esc(b.site)} › ${esc(b.bat)} › ${esc(b.etage)}</div>
+              ${cbeStr ? `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:10px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:2px 6px;border-radius:6px"><i class="ti ti-barcode" style="font-size:10px"></i>${esc(cbeStr)}</div>` : ''}
               <div style="font-size:11px;color:var(--text2);margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 ${b.lastBy ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--accent-bg);color:var(--accent);padding:2px 8px;border-radius:10px;font-weight:600"><i class="ti ti-user" style="font-size:11px"></i>${esc(b.lastBy)}</span>` : ''}
                 <span style="color:var(--text3);font-size:10px"><i class="ti ti-clock" style="font-size:10px"></i> ${new Date(b.lastTs).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
@@ -1942,8 +2013,8 @@ function renderInventoryHome() {
             <button class="btn btn-sm btn-primary" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" onclick="event.stopPropagation();resumeInventory(this)" style="flex:1"><i class="ti ti-clipboard-check"></i> Continuer l'inventaire</button>
             <button class="btn btn-sm" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" onclick="event.stopPropagation();openBureauArticles(this)" title="Voir les articles"><i class="ti ti-list"></i></button>
           </div>
-        </div>
-      `).join('')}
+        </div>`;
+      }).join('')}
     </div>` : ''}
 
     ${termines.length ? `
@@ -2271,15 +2342,19 @@ function renderLocSiteContent(container, site) {
       bureaux.forEach(bureau => {
         const stats = getStatsFor(site, bat, etage, bureau);
         const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+        const cbe = getCbeFromLoc(site, bat, etage, bureau);
         html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--border)">
-          <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer" data-site="${site}" data-bat="${bat}" data-etage="${etage}" data-bureau="${bureau}" onclick="goToInventory(this)">
+          <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;min-width:0" data-site="${esc(site)}" data-bat="${esc(bat)}" data-etage="${esc(etage)}" data-bureau="${esc(bureau)}" onclick="goToInventory(this)">
             <i class="ti ti-map-pin" class="txt-12-muted"></i>
-            <div style="flex:1;font-size:13px">${bureau}</div>
+            <div style="flex:1;min-width:0;overflow:hidden">
+              <div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(bureau)}</div>
+              ${cbe ? `<div style="font-family:monospace;font-size:10px;color:var(--accent);font-weight:600;margin-top:1px"><i class="ti ti-barcode" style="font-size:10px"></i> ${esc(cbe)}</div>` : ''}
+            </div>
             <span style="font-size:12px;font-weight:600;color:${pctColor}">${stats.pct}%</span>
             <span class="txt-xs">${stats.inv}/${stats.total}</span>
             <i class="ti ti-arrow-right" style="font-size:13px;color:var(--text3)"></i>
           </div>
-          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','${etage}','${bureau}')" title="Modifier ce bureau"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
+          <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${esc(site)}','${esc(bat)}','${esc(etage)}','${esc(bureau)}')" title="Modifier ce bureau"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
         </div>`;
       });
       html += `</div>`;
@@ -2790,11 +2865,13 @@ function dashBureauCard(b) {
   const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
   const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : '#6b7280';
   const statutDisplay = b.statut === 'NON TRAITE' ? 'NON TRAITÉ' : b.statut;
+  const cbeStr = getCbeFromLoc(b.site, b.bat, b.etage, b.bureau);
   return `<div class="dash-bureau-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
     <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;margin-bottom:2px">${esc(b.bureau)}</div>
         <div class="txt-xs">${esc(b.site)} › ${esc(b.bat)} › ${esc(b.etage)}</div>
+        ${cbeStr ? `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:10px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:2px 6px;border-radius:6px"><i class="ti ti-barcode" style="font-size:10px"></i>${esc(cbeStr)}</div>` : ''}
       </div>
       <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${statutDisplay}</span>
       <div style="text-align:right">
@@ -3043,6 +3120,8 @@ function openTransferModal(item) {
   const obs = u.obs !== undefined ? u.obs : (item.obs || '');
   const oldLoc = item.site + ' › ' + item.bat + ' › ' + item.etage + ' › ' + item.bureau;
   const newLoc = curLoc.site + ' › ' + curLoc.bat + ' › ' + curLoc.etage + ' › ' + curLoc.bureau;
+  const oldCbe = getCbeFromLoc(item.site, item.bat, item.etage, item.bureau);
+  const newCbe = getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
   
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head"><h2><i class="ti ti-transfer" style="color:var(--accent)"></i> Article trouvé ailleurs</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
@@ -3053,10 +3132,10 @@ function openTransferModal(item) {
         <div style="font-size:16px;font-weight:700;margin-bottom:4px">${esc(item.art)}</div>
         <div style="font-size:13px;color:var(--text2);margin-bottom:8px">${esc(item.fam)}</div>
         <div>${[
-          '<span class="tag"><i class="ti ti-barcode"></i> ' + item.cbi + '</span>',
-          item.marque ? '<span class="tag">' + item.marque + '</span>' : '',
-          item.modele ? '<span class="tag">' + item.modele + '</span>' : '',
-          item.serie ? '<span class="tag">SN: ' + item.serie + '</span>' : ''
+          '<span class="tag"><i class="ti ti-barcode"></i> ' + esc(item.cbi) + '</span>',
+          item.marque ? '<span class="tag">' + esc(item.marque) + '</span>' : '',
+          item.modele ? '<span class="tag">' + esc(item.modele) + '</span>' : '',
+          item.serie ? '<span class="tag">SN: ' + esc(item.serie) + '</span>' : ''
         ].filter(Boolean).join('')}</div>
       </div>
       
@@ -3064,18 +3143,21 @@ function openTransferModal(item) {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <div style="flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:10px 12px">
           <div style="font-size:11px;color:var(--danger-txt);font-weight:700;margin-bottom:4px"><i class="ti ti-map-pin"></i> ANCIEN EMPLACEMENT</div>
-          <div style="font-size:12px;color:var(--text)">${oldLoc}</div>
+          <div style="font-size:12px;color:var(--text)">${esc(oldLoc)}</div>
+          ${oldCbe ? `<div style="margin-top:4px;font-family:monospace;font-size:10px;color:var(--danger-txt);font-weight:600"><i class="ti ti-barcode" style="font-size:10px"></i> ${esc(oldCbe)}</div>` : ''}
         </div>
         <i class="ti ti-arrow-right" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
         <div style="flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:10px 12px">
           <div style="font-size:11px;color:var(--success-txt);font-weight:700;margin-bottom:4px"><i class="ti ti-map-pin"></i> NOUVEAU EMPLACEMENT</div>
-          <div style="font-size:12px;color:var(--text)">${newLoc}</div>
+          <div style="font-size:12px;color:var(--text)">${esc(newLoc)}</div>
+          ${newCbe ? `<div style="margin-top:4px;font-family:monospace;font-size:10px;color:var(--success-txt);font-weight:600"><i class="ti ti-barcode" style="font-size:10px"></i> ${esc(newCbe)}</div>` : ''}
         </div>
       </div>
       
       <!-- Formulaire de mise à jour (comme openEditItem) -->
       <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
-      <div class="form-group"><label class="form-label">N° Amendis</label><input type="text" id="t-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis"></div>
+      ${renderEtatGuide()}
+      <div class="form-group" style="margin-top:14px"><label class="form-label">N° Amendis</label><input type="text" id="t-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis"></div>
       <div class="form-group"><label class="form-label">Observation</label><textarea id="t-obs" rows="2">${esc(obs)}</textarea></div>
       <div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="OUI" checked style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:1px solid var(--danger-ring);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="t-trouve" value="NON" style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>
       ${renderPhotoSection(item.cbi)}
@@ -3154,6 +3236,7 @@ async function confirmTransferAndUpdate(cbi) {
 
   invalidateStatsCache();
   invalidateAllItemsCache();
+    invalidateCbeIndex();
   saveLocal();
   closeModal();
   renderMain();
@@ -3167,19 +3250,22 @@ function openEditItem_cbi(cbi) { const i = findItemByCbi(cbi); if (i) openEditIt
 function openEditItem(item) {
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
-  // Construire les options de bureaux groupés par site/bat/etage
+  // Construire les options de bureaux groupés par site/bat/etage (avec CBE entre crochets)
   const allLocs = [];
   for (const site in HIER) {
     for (const bat in HIER[site]) {
       for (const etage in HIER[site][bat]) {
         for (const bureau of HIER[site][bat][etage]) {
-          allLocs.push({ site, bat, etage, bureau, label: `${site} › ${bat} › ${etage} › ${bureau}`, value: `${site}|${bat}|${etage}|${bureau}` });
+          const cbe = getCbeFromLoc(site, bat, etage, bureau);
+          const label = `${site} › ${bat} › ${etage} › ${bureau}${cbe ? ' [' + cbe + ']' : ''}`;
+          allLocs.push({ site, bat, etage, bureau, label, value: `${site}|${bat}|${etage}|${bureau}` });
         }
       }
     }
   }
   const currentLocVal = `${esc(item.site)}|${esc(item.bat)}|${esc(item.etage)}|${esc(item.bureau)}`;
-  const locOptions = allLocs.map(l => `<option value="${l.value}"${l.value === currentLocVal ? ' selected' : ''}>${l.label}</option>`).join('');
+  const currentCbe = getCbeFromLoc(item.site, item.bat, item.etage, item.bureau);
+  const locOptions = allLocs.map(l => `<option value="${esc(l.value)}"${l.value === currentLocVal ? ' selected' : ''}>${esc(l.label)}</option>`).join('');
 
   // Liste de tous les articles + familles pour recherche
   const fams = Object.keys(FAMS).sort();
@@ -3193,6 +3279,7 @@ function openEditItem(item) {
     <div class="form-group">
       <label class="form-label"><i class="ti ti-map-pin"></i> Emplacement</label>
       <select id="e-loc" data-original="${currentLocVal}">${locOptions}</select>
+      ${currentCbe ? `<div style="margin-top:2px;font-family:monospace;font-size:11px;color:var(--accent);font-weight:600"><i class="ti ti-barcode" style="font-size:11px"></i> CBE actuel : ${esc(currentCbe)}</div>` : ''}
       <div id="e-loc-info" style="font-size:11px;color:var(--text3);margin-top:-4px"></div>
     </div>
 
@@ -3240,7 +3327,7 @@ function openEditItem(item) {
       </div>
     </details>
 
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div><div class="form-group"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide()}<div class="form-group" style="margin-top:14px"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
 
   // Stocker la liste complète d'articles pour les datalists dépliables
   window._E_ALL_ARTICLES = allArticles;
@@ -3384,6 +3471,7 @@ async function saveUpd(cbi) {
   updates[cbi] = u;
   invalidateStatsCache();
   invalidateAllItemsCache();
+    invalidateCbeIndex();
   saveLocal();
   closeModal();
   renderMain();
@@ -3420,7 +3508,7 @@ function openAddItem(prefilledCode) {
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head"><h2>Ajouter un article</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
     <div class="modal-body">
-      ${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}
+      ${curLoc.bureau ? `<div class="alert alert-info" style="margin-bottom:14px"><i class="ti ti-map-pin"></i><div>${esc(curLoc.site)} › ${esc(curLoc.bat)} › ${esc(curLoc.etage)} › ${esc(curLoc.bureau)}${(function(){const c=getCbeFromLoc(curLoc.site,curLoc.bat,curLoc.etage,curLoc.bureau);return c?`<div style="margin-top:4px;font-family:monospace;font-size:11px;font-weight:600;opacity:.85"><i class="ti ti-barcode" style="font-size:11px"></i> ${esc(c)}</div>`:'';})()}</div></div>` : '<div class="alert alert-warn"><i class="ti ti-alert-triangle"></i>Sélectionnez un bureau d\'abord</div>'}
       ${prefilledCode ? `<div class="alert alert-success" style="margin-bottom:14px"><i class="ti ti-barcode"></i><div>Code scanné : <strong>${prefilledCode}</strong> — pré-rempli ci-dessous</div></div>` : ''}
 
       <div class="form-row">
@@ -3487,8 +3575,9 @@ function openAddItem(prefilledCode) {
           <select id="n-rv">${ER.map(x => `<option>${x}</option>`).join('')}</select>
         </div>
       </div>
+      ${renderEtatGuide()}
 
-      <div class="form-group">
+      <div class="form-group" style="margin-top:14px">
         <label class="form-label">Observation</label>
         <textarea id="n-obs" rows="2"></textarea>
       </div>
@@ -3663,6 +3752,7 @@ async function saveNew() {
   };
   newItems.push(item);
   invalidateAllItemsCache();
+    invalidateCbeIndex();
   updates[cbi] = { serv: item.serv, renouv: item.renouv, obs: item.obs, by: currentUser, ts: Date.now() };
   // Mettre à jour les index
   CBI_INDEX[cbi] = item;
@@ -3758,7 +3848,8 @@ function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'da
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
 function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
-function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; const before = Object.keys(updates).length; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); logActivity('RESET', `${before} mises à jour supprimées`, 'local'); }
+function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; const before = Object.keys(updates).length; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache();
+    invalidateCbeIndex(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); logActivity('RESET', `${before} mises à jour supprimées`, 'local'); }
 // ─────────────────────────────────────────────────────────────
 //  PANNEAU SUIVI — Orienté EMPLACEMENTS (bureaux)
 // ─────────────────────────────────────────────────────────────
@@ -3953,11 +4044,13 @@ function bureauCard(b) {
   const statutColor = b.statut === 'TERMINE' ? 'var(--success-txt)' : b.statut === 'EN COURS' ? 'var(--warn-txt)' : '#6b7280';
   const statutBg = b.statut === 'TERMINE' ? 'var(--success-bg)' : b.statut === 'EN COURS' ? 'var(--warn-bg)' : 'var(--bg2)';
   const pctColor = b.stats.pct === 100 ? 'var(--success-txt)' : b.stats.pct > 0 ? 'var(--warn-txt)' : '#6b7280';
+  const cbeStr = getCbeFromLoc(b.site, b.bat, b.etage, b.bureau);
   return `<div class="suivi-bureau-card" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px">
     <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;margin-bottom:2px">${esc(b.bureau)}</div>
         <div class="txt-xs">${esc(b.site)} › ${esc(b.bat)} › ${esc(b.etage)}</div>
+        ${cbeStr ? `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:10px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:2px 6px;border-radius:6px"><i class="ti ti-barcode" style="font-size:10px"></i>${esc(cbeStr)}</div>` : ''}
       </div>
       <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${b.statut}</span>
       <div style="text-align:right">
@@ -4089,6 +4182,14 @@ function openEditLocation(site, bat, etage, bureau) {
     ? `<div class="alert alert-warn" style="margin-top:10px"><i class="ti ti-alert-triangle"></i><div>La modification de ce ${label} mettra à jour <strong>tous les articles</strong> et sous-emplacements rattachés (${items.length} article(s)).</div></div>`
     : '';
 
+  // Récupérer le CBE (uniquement pour les bureaux qui en ont un)
+  const curCbe = (level === 'bureau') ? getCbeFromLoc(site, bat, etage, bureau) : '';
+  const cbeField = (level === 'bureau') ? `
+      <div class="form-group">
+        <label class="form-label"><i class="ti ti-barcode"></i> Code barre emplacement (CBE)</label>
+        <input type="text" id="el-cbe" value="${esc(curCbe)}" placeholder="Ex: 31000123" inputmode="text">
+      </div>` : '';
+
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head">
       <h2><i class="ti ti-edit"></i> Modifier ${label}</h2>
@@ -4097,19 +4198,21 @@ function openEditLocation(site, bat, etage, bureau) {
     <div class="modal-body">
       <div class="item-box">
         <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${label}</div>
-        <div style="font-size:14px;font-weight:700;margin-bottom:4px">${oldName}</div>
-        <div style="font-size:12px;color:var(--text2)">${fullPath}</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">${esc(oldName)}</div>
+        <div style="font-size:12px;color:var(--text2)">${esc(fullPath)}</div>
+        ${curCbe ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:11px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:3px 8px;border-radius:8px"><i class="ti ti-barcode" style="font-size:12px"></i>${esc(curCbe)}</div>` : ''}
         <div style="font-size:12px;color:var(--text3);margin-top:6px">${items.length} article(s) concerné(s)</div>
       </div>
       <div class="form-group">
         <label class="form-label">Nouveau nom du ${label} *</label>
-        <input type="text" id="el-name" value="${oldName}">
+        <input type="text" id="el-name" value="${esc(oldName)}">
       </div>
+      ${cbeField}
       ${extraFields}
       ${cascadeWarn}
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
-        <button class="btn btn-primary" data-level="${level}" data-site="${site||''}" data-bat="${bat||''}" data-etage="${etage||''}" data-bureau="${bureau||''}" onclick="saveEditLocation(this)"><i class="ti ti-check"></i> Enregistrer</button>
+        <button class="btn btn-primary" data-level="${level}" data-site="${esc(site||'')}" data-bat="${esc(bat||'')}" data-etage="${esc(etage||'')}" data-bureau="${esc(bureau||'')}" onclick="saveEditLocation(this)"><i class="ti ti-check"></i> Enregistrer</button>
       </div>
     </div>`);
 }
@@ -4251,10 +4354,16 @@ async function saveEditLocation(btn) {
         const empsArr = Object.keys(REL_EMPS);
         const idx = empsArr.indexOf(emp_id);
         const newBatId = targetBatId || REL_EMPS[emp_id].bat_id;
-        await sPut(`Emplacements!D${idx + 2}:F${idx + 2}`, [[newBatId, newEtage, newBureau]]);
+        // Lire le nouveau CBE depuis le formulaire (si modifié)
+        const cbeEl = document.getElementById('el-cbe');
+        const newCbeVal = cbeEl ? cbeEl.value.trim() : REL_EMPS[emp_id].cbe;
+        // Mettre à jour B (cbe), D (bat_id), E (etage), F (bureau) en une fois
+        await sPut(`Emplacements!B${idx + 2}:F${idx + 2}`, [[newCbeVal, REL_EMPS[emp_id].site_id, newBatId, newEtage, newBureau]]);
+        REL_EMPS[emp_id].cbe = newCbeVal;
         REL_EMPS[emp_id].bat_id = newBatId;
         REL_EMPS[emp_id].etage = newEtage;
         REL_EMPS[emp_id].bureau = newBureau;
+        invalidateCbeIndex();
       }
       // Dénormalisation
       for (const r of getAllItems()) {
@@ -4340,6 +4449,7 @@ async function saveLoc() {
     if (!emp_id) {
       emp_id = 'E' + String(Object.keys(REL_EMPS).length + 1).padStart(5, '0');
       REL_EMPS[emp_id] = { emp_id, cbe, site_id, bat_id, etage, bureau, type_empl: type };
+      invalidateCbeIndex();
       if (gTok) await sAppend('Emplacements', [[emp_id, cbe, site_id, bat_id, etage, bureau, type]]);
     } else {
       showToast('Cet emplacement existe déjà', 'warn');
