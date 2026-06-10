@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 10.2 -->
+<!-- VERSION 10.3 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -994,7 +994,7 @@ async function ensureSheets() {
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
     const hMap = {
-      'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts'],
+      'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts','criteres'],
       'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
       'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le'],
       'ActivityLog': ['timestamp','user','action','details','target']
@@ -1017,7 +1017,7 @@ async function pullAll() {
       sGet('Familles!A2:B'),
       sGet('Articles!A2:C'),
       sGet('Inventaire!A2:L'),
-      sGet('Updates!A2:O'),
+      sGet('Updates!A2:P'),
       sGet('NouveauxArticles!A2:M'),
       sGet('SuiviSites!A2:H')
     ]);
@@ -1084,12 +1084,18 @@ async function pullAll() {
     // Updates (avec emp_id potentiellement transféré)
     updates = {};
     for (const r of (updData.values || [])) {
-      // 15 colonnes: cbi, emp_id, cbe, site, batiment, etage, bureau, article, etat_service, etat_renouvelabilite, observation, trouve, photos, by, ts
-      const [cbi, emp_id, cbe_col, site_col, bat_col, etage_col, bureau_col, article_col, serv, renouv, obs, trouve, photosCol, by, ts] = r;
+      // 16 colonnes: cbi, emp_id, cbe, site, batiment, etage, bureau, article, etat_service, etat_renouvelabilite, observation, trouve, photos, by, ts, criteres
+      const [cbi, emp_id, cbe_col, site_col, bat_col, etage_col, bureau_col, article_col, serv, renouv, obs, trouve, photosCol, by, ts, criteresCol] = r;
       if (!cbi) continue;
       const t = ts ? new Date(ts).getTime() : 0;
       if (!updates[cbi] || t > updates[cbi].ts) {
-        updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: obs || '', trouve: trouve || '', by: by || '', ts: t };
+        // Reconstruire l'observation avec les critères en première ligne (pour pré-cocher à l'ouverture)
+        let fullObs = obs || '';
+        if (criteresCol && criteresCol.trim()) {
+          const critLine = 'État observé: ' + criteresCol.trim();
+          fullObs = fullObs ? critLine + '\n' + fullObs : critLine;
+        }
+        updates[cbi] = { serv: serv || 'EN SERVICE', renouv: renouv || 'BON', obs: fullObs, trouve: trouve || '', by: by || '', ts: t };
         // Si l'update porte un nouvel emp_id, mettre à jour l'article (transfert)
         if (emp_id) {
           const item = CBI_INDEX[cbi] || DB.find(x => x.cbi === cbi);
@@ -1219,10 +1225,25 @@ function invalidateCbeIndex() { _EMP_CBE_INDEX = null; }
 async function writeUpd(cbi, u) {
   const item = findItemByCbi(cbi) || {};
   const emp_id = item.emp_id || '';
-  const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
+  // Colonne P : critères d'état observés (extraits de l'observation)
+  const criteres = extractCriteresFromObs(u.obs || '');
+  // Observation nettoyée : retirer la ligne "État observé:" pour ne pas la dupliquer
+  const obsClean = (u.obs || '').split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
+  // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres
+  const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', '', u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')];
   if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); renderPendingIndicator(); return; }
   try {
-    await sAppend('Updates', [row]);
+    // UPSERT : chercher si une ligne existe déjà pour ce CBI
+    const d = await sGet('Updates!A2:A');
+    const rows = d.values || [];
+    const idx = rows.findIndex(r => r[0] === cbi);
+    if (idx >= 0) {
+      // Mise à jour de la ligne existante
+      await sPut(`Updates!A${idx + 2}:P${idx + 2}`, [row]);
+    } else {
+      // Nouvelle ligne
+      await sAppend('Updates', [row]);
+    }
   } catch(e) {
     pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } });
     renderPendingIndicator();
@@ -3906,11 +3927,14 @@ async function updatePhotosInSheet(cbi) {
     const rows = d.values || [];
     const idx = rows.findIndex(r => r[0] === cbi);
     if (idx >= 0) {
-      // Colonne M = photos (13ème colonne)
+      // Colonne M = photos (13ème colonne) — pas besoin de toucher au reste
       await sPut(`Updates!M${idx + 2}`, [[links]]);
     } else {
+      // Pas de ligne existante : créer une ligne avec photos uniquement
       const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() };
-      await sAppend('Updates', [[cbi, item.emp_id || '', item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', links, u.by, new Date(u.ts).toISOString()]]);
+      const criteres = extractCriteresFromObs(u.obs || '');
+      const obsClean = (u.obs || '').split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
+      await sAppend('Updates', [[cbi, item.emp_id || '', item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', links, u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')]]);
     }
   } catch(e) { console.error('Photo sheet update error', e); }
 }
