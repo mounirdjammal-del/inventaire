@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.2 -->
+<!-- VERSION 11.3 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -458,10 +458,10 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
       <div class="sidebar-inner">
         <div class="sidebar-section">
           <div class="sidebar-label">Scanner emplacement</div>
-          <div class="loc-scan-row" onclick="document.getElementById('loc-scan-inp').focus()" style="cursor:text">
+          <label class="loc-scan-row" for="loc-scan-inp" style="cursor:text">
             <i class="ti ti-qrcode" style="font-size:20px;color:var(--text2);pointer-events:none"></i>
             <input type="text" id="loc-scan-inp" placeholder="Code barre emplacement…" onkeydown="onLocScanKey(event)" autocomplete="off" inputmode="text">
-          </div>
+          </label>
           <div class="loc-feedback" id="loc-feedback"></div>
         </div>
         <div class="sidebar-section">
@@ -2050,11 +2050,11 @@ function renderMain() {
     </div>
 
     <!-- Zone de scan avec indicateurs 3 cas -->
-    <div class="scan-zone" onclick="document.getElementById('scan-inp').focus()">
+    <label class="scan-zone" for="scan-inp">
       <i class="ti ti-scan"></i>
       <input type="text" id="scan-inp" placeholder="Scanner un code barre puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
-    </div>
+    </label>
     <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;font-size:11px">
       <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success-txt);background:var(--success-bg);padding:3px 8px;border-radius:8px"><i class="ti ti-edit" style="font-size:11px"></i> Article ici → Mise à jour</span>
       <span style="display:inline-flex;align-items:center;gap:4px;color:var(--warn-txt);background:var(--warn-bg);padding:3px 8px;border-radius:8px"><i class="ti ti-transfer" style="font-size:11px"></i> Article ailleurs → Transfert</span>
@@ -2288,11 +2288,11 @@ function renderLocationsView() {
     </div>
 
     <!-- Zone de scan pour accès rapide -->
-    <div class="scan-zone" style="margin-bottom:10px" onclick="document.getElementById('loc-search-scan').focus()">
+    <label class="scan-zone" style="margin-bottom:10px" for="loc-search-scan">
       <i class="ti ti-scan"></i>
       <input type="text" id="loc-search-scan" placeholder="Scanner code barre emplacement…" onkeydown="onLocSearchScan(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
-    </div>
+    </label>
 
     <!-- Recherche texte -->
     <div class="search-row" style="margin-bottom:14px">
