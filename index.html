@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 10.7 -->
+<!-- VERSION 11.0 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -682,6 +682,10 @@ let DB = [], HIER = {}, FAMS = {};
 let LOC_INDEX = {}; // cache: 'site|bat|etage|bureau' -> [items]
 let CBI_INDEX = {}; // cache: cbi -> item (lookup O(1))
 let CBE_INDEX = {}; // cache: cbe -> item
+// Cache des lignes Updates : cbi → index de ligne (0-based) dans la feuille
+let UPDATES_INDEX = {};
+let UPDATES_INDEX_SIZE = 0;
+let UPDATES_PHOTOS_CACHE = {};  // cbi → URL photos déjà en feuille
 // Index relationnels (chargés depuis les tables référentielles)
 let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
@@ -1083,10 +1087,18 @@ async function pullAll() {
 
     // Updates (avec emp_id potentiellement transféré)
     updates = {};
-    for (const r of (updData.values || [])) {
-      // 16 colonnes: cbi, emp_id, cbe, site, batiment, etage, bureau, article, etat_service, etat_renouvelabilite, observation, trouve, photos, by, ts, criteres
+    UPDATES_INDEX = {};
+    UPDATES_PHOTOS_CACHE = {};
+    const updRows = updData.values || [];
+    UPDATES_INDEX_SIZE = updRows.length;
+    for (let i = 0; i < updRows.length; i++) {
+      const r = updRows[i];
+      // 20 colonnes: cbi, emp_id, cbe, site, batiment, etage, bureau, article, etat_service, etat_renouvelabilite, observation, trouve, photos, by, ts, criteres, marque, modele, serie, num_amendis
       const [cbi, emp_id, cbe_col, site_col, bat_col, etage_col, bureau_col, article_col, serv, renouv, obs, trouve, photosCol, by, ts, criteresCol] = r;
       if (!cbi) continue;
+      // Cache le numéro de ligne et les photos (pour éviter les sGet répétés lors des writes)
+      UPDATES_INDEX[cbi] = i;
+      if (photosCol) UPDATES_PHOTOS_CACHE[cbi] = photosCol;
       const t = ts ? new Date(ts).getTime() : 0;
       if (!updates[cbi] || t > updates[cbi].ts) {
         // Reconstruire l'observation avec les critères en première ligne (pour pré-cocher à l'ouverture)
@@ -1222,6 +1234,23 @@ function getCbeFromLoc(site, bat, etage, bureau) {
 }
 function invalidateCbeIndex() { _EMP_CBE_INDEX = null; }
 
+// Helper : retourne l'index de ligne (0-based) du CBI dans la feuille Updates
+// Utilise le cache UPDATES_INDEX (construit par pullAll), sinon fallback sGet
+async function getUpdateRowIndex(cbi) {
+  if (cbi in UPDATES_INDEX) return UPDATES_INDEX[cbi];
+  // Fallback : recharger l'index complet (devrait être rare)
+  try {
+    const d = await sGet('Updates!A2:A');
+    const rows = d.values || [];
+    UPDATES_INDEX = {};
+    UPDATES_INDEX_SIZE = rows.length;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i][0]) UPDATES_INDEX[rows[i][0]] = i;
+    }
+    return cbi in UPDATES_INDEX ? UPDATES_INDEX[cbi] : -1;
+  } catch(e) { return -1; }
+}
+
 async function writeUpd(cbi, u) {
   const item = findItemByCbi(cbi) || {};
   const emp_id = item.emp_id || '';
@@ -1233,15 +1262,20 @@ async function writeUpd(cbi, u) {
   const photoLinks = (photos[cbi] || []).map(p => p.viewUrl).filter(Boolean).join('\n');
   if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); renderPendingIndicator(); return; }
   try {
-    // UPSERT : chercher si une ligne existe déjà pour ce CBI
-    // On lit aussi la colonne M (photos) pour préserver les photos existantes si pas en local
-    const d = await sGet('Updates!A2:M');
-    const rows = d.values || [];
-    const idx = rows.findIndex(r => r[0] === cbi);
-    // Préserver les photos déjà dans la feuille si on n'en a pas localement
+    // Utiliser le cache UPDATES_INDEX (CBI → numéro de ligne) pour éviter le sGet répété
+    let idx = await getUpdateRowIndex(cbi);
+    // Si on a un cache et qu'on doit préserver les photos existantes
     let finalPhotos = photoLinks;
-    if (!finalPhotos && idx >= 0 && rows[idx][12]) {
-      finalPhotos = rows[idx][12];
+    if (!finalPhotos && idx >= 0 && UPDATES_PHOTOS_CACHE[cbi]) {
+      finalPhotos = UPDATES_PHOTOS_CACHE[cbi];
+    } else if (!finalPhotos && idx >= 0) {
+      // Lire uniquement la colonne M pour cette ligne (1 cellule, très rapide)
+      try {
+        const dPhoto = await sGet(`Updates!M${idx + 2}`);
+        const existingPhotos = (dPhoto.values && dPhoto.values[0] && dPhoto.values[0][0]) || '';
+        finalPhotos = existingPhotos;
+        UPDATES_PHOTOS_CACHE[cbi] = existingPhotos;
+      } catch(e) {}
     }
     // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres, Q=marque, R=modele, S=serie, T=num_amendis
     const row = [
@@ -1256,7 +1290,11 @@ async function writeUpd(cbi, u) {
     } else {
       // Nouvelle ligne
       await sAppend('Updates', [row]);
+      // Mettre à jour le cache (l'index de la nouvelle ligne)
+      UPDATES_INDEX[cbi] = (UPDATES_INDEX_SIZE || 0);
+      UPDATES_INDEX_SIZE = (UPDATES_INDEX_SIZE || 0) + 1;
     }
+    UPDATES_PHOTOS_CACHE[cbi] = finalPhotos;
   } catch(e) {
     pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } });
     renderPendingIndicator();
@@ -3735,13 +3773,30 @@ async function saveUpd(cbi) {
   await writeUpd(cbi, u);
 }
 
+// Cache: cbi → numéro de ligne dans la feuille Inventaire (0-based)
+let INVENTAIRE_INDEX = {};
+let INVENTAIRE_INDEX_BUILT = false;
+
+async function getInventaireRowIndex(cbi) {
+  if (INVENTAIRE_INDEX_BUILT && (cbi in INVENTAIRE_INDEX)) return INVENTAIRE_INDEX[cbi];
+  if (!INVENTAIRE_INDEX_BUILT) {
+    try {
+      const d = await sGet('Inventaire!A2:A');
+      const rows = d.values || [];
+      INVENTAIRE_INDEX = {};
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i][0]) INVENTAIRE_INDEX[rows[i][0]] = i;
+      }
+      INVENTAIRE_INDEX_BUILT = true;
+    } catch(e) { return -1; }
+  }
+  return cbi in INVENTAIRE_INDEX ? INVENTAIRE_INDEX[cbi] : -1;
+}
+
 // Met à jour la ligne Inventaire dans Sheets (caractéristiques modifiées)
 async function updateInventoryRow(item) {
   if (!gTok || !gsConf.sheetId) return;
-  // Trouver la ligne par CBI dans Inventaire
-  const d = await sGet('Inventaire!A2:A');
-  const rows = d.values || [];
-  const idx = rows.findIndex(r => r[0] === item.cbi);
+  const idx = await getInventaireRowIndex(item.cbi);
   if (idx < 0) return; // Pas dans Inventaire (probablement un newItem)
   // Schema Inventaire: A=cbi, B=article_id, C=emp_id, D=marque, E=modele, F=serie, G=num_amendis, ...
   await sPut(`Inventaire!B${idx + 2}:G${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '', item.prod || '']]);
@@ -3866,14 +3921,13 @@ async function handleNewPhotoCapture(event) {
   const files = [...event.target.files];
   if (!files.length) return;
   if (!window._newItemPhotos) window._newItemPhotos = [];
-  // Compresser et stocker en mémoire (Blob)
-  for (const file of files) {
-    try {
-      const compressed = await compressImage(file, 1200, 0.82);
-      const previewUrl = URL.createObjectURL(compressed);
-      window._newItemPhotos.push({ blob: compressed, previewUrl, name: file.name });
-    } catch(e) { console.error('Compression photo', e); }
-  }
+  // Compresser TOUTES les photos en parallèle (gain notable sur multi-photos)
+  const compressed = await Promise.all(files.map(f =>
+    compressImage(f, 1200, 0.82)
+      .then(blob => ({ blob, previewUrl: URL.createObjectURL(blob), name: f.name }))
+      .catch(e => { console.error('Compression photo', e); return null; })
+  ));
+  for (const p of compressed) if (p) window._newItemPhotos.push(p);
   renderNewItemPhotoThumbs();
   event.target.value = '';
 }
@@ -4074,7 +4128,25 @@ function renderPhotoSection(cbi) {
   const thumbs = list.map((p, i) => `<div style="position:relative;display:inline-block;margin:4px"><a href="${p.viewUrl}" target="_blank"><img src="${p.thumbUrl}" alt="photo" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)"></a><button onclick="deletePhoto('${cbi}',${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px">✕</button></div>`).join('');
   return `<div class="form-group" id="photo-section-${cbi}"><label class="form-label"><i class="ti ti-camera"></i> Photos (${list.length})</label><div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs || '<div class="txt-12-muted">Aucune photo</div>'}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label>${!gTok ? '<div style="font-size:11px;color:var(--warn-txt)"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>' : ''}</div></div>`;
 }
-async function handlePhotoCapture(event, cbi) { const files = [...event.target.files]; if (!files.length) return; if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; } showToast(`Upload de ${files.length} photo(s)…`, 'info'); try { if (!photos[cbi]) photos[cbi] = []; for (let i = 0; i < files.length; i++) { const result = await uploadPhotoToDrive(files[i], cbi, i + 1); photos[cbi].push(result); } savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photos uploadées', 'success'); } catch(err) { showToast('Erreur upload: ' + err.message, 'danger'); } event.target.value = ''; }
+async function handlePhotoCapture(event, cbi) {
+  const files = [...event.target.files];
+  if (!files.length) return;
+  if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; }
+  showToast(`Upload de ${files.length} photo(s)…`, 'info');
+  try {
+    if (!photos[cbi]) photos[cbi] = [];
+    // Uploader toutes les photos en parallèle (gain notable sur multi-photos)
+    const startIdx = photos[cbi].length;
+    const uploaded = await Promise.all(files.map((f, i) => uploadPhotoToDrive(f, cbi, startIdx + i + 1)));
+    photos[cbi].push(...uploaded);
+    savePhotos();
+    await updatePhotosInSheet(cbi);
+    const sec = document.getElementById(`photo-section-${cbi}`);
+    if (sec) sec.outerHTML = renderPhotoSection(cbi);
+    showToast('Photos uploadées', 'success');
+  } catch(err) { showToast('Erreur upload: ' + err.message, 'danger'); }
+  event.target.value = '';
+}
 async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) return; const p = photos[cbi] && photos[cbi][idx]; if (p && gTok && p.id) { try { await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${gTok}` } }); } catch(e) {} } photos[cbi].splice(idx, 1); if (!photos[cbi].length) delete photos[cbi]; savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photo supprimée', 'success'); }
 async function ensureDriveFolder() { if (driveFolderId) return driveFolderId; const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`); const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers: { Authorization: `Bearer ${gTok}` } }); if (!r.ok) throw new Error('Drive API inaccessible'); const data = await r.json(); if (data.files && data.files.length) { driveFolderId = data.files[0].id; return driveFolderId; } const cr = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }) }); if (!cr.ok) throw new Error('Impossible de créer le dossier'); const fd = await cr.json(); driveFolderId = fd.id; await fetch(`https://www.googleapis.com/drive/v3/files/${driveFolderId}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return driveFolderId; }
 async function uploadPhotoToDrive(file, cbi, photoIndex) { const folderId = await ensureDriveFolder(); const ext = file.name.split('.').pop() || 'jpg'; const fname = `${cbi}_${photoIndex}_${Date.now()}.${ext}`; const compressed = await compressImage(file, 1200, 0.82); const boundary = 'inv_boundary_' + Date.now(); const meta = JSON.stringify({ name: fname, parents: [folderId] }); const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${compressed.type}\r\n\r\n`; const bodyEnd = `\r\n--${boundary}--`; const blob = new Blob([body, compressed, bodyEnd]); const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: blob }); if (!r.ok) throw new Error('Erreur upload photo'); const fd = await r.json(); await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return { id: fd.id, viewUrl: `https://drive.google.com/file/d/${fd.id}/view`, thumbUrl: `https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`, name: fname }; }
