@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.0 -->
+<!-- VERSION 11.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -718,13 +718,6 @@ function showModal(html) {
 }
 function closeModal() {
   document.getElementById('modal').innerHTML = '';
-  // Refocus auto sur la zone de scan inventaire si elle est visible (élimine la latence après scan)
-  setTimeout(() => {
-    const scanInp = document.getElementById('scan-inp');
-    if (scanInp && document.activeElement !== scanInp && scanInp.offsetParent !== null) {
-      scanInp.focus();
-    }
-  }, 50);
 }
 
 function saveLocal() {
@@ -2085,7 +2078,6 @@ function renderMain() {
   `;
 
   renderTable();
-  setTimeout(() => document.getElementById('scan-inp')?.focus(), 100);
 }
 
 function renderInventoryHome() {
@@ -2336,7 +2328,6 @@ function renderLocationsView() {
   });
   html += `</div>`;
   main.innerHTML = html;
-  setTimeout(() => document.getElementById('loc-search-scan')?.focus(), 100);
   // Restaurer la recherche persistée
   if (UF.locSearch && UF.locSearch.trim().length >= 2) {
     requestAnimationFrame(() => performLocTextSearch());
