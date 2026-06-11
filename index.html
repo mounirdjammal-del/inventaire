@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 10.5 -->
+<!-- VERSION 10.7 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -994,7 +994,7 @@ async function ensureSheets() {
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
     const hMap = {
-      'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts','criteres'],
+      'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts','criteres','marque','modele','serie','num_amendis'],
       'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
       'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le'],
       'ActivityLog': ['timestamp','user','action','details','target']
@@ -1017,7 +1017,7 @@ async function pullAll() {
       sGet('Familles!A2:B'),
       sGet('Articles!A2:C'),
       sGet('Inventaire!A2:L'),
-      sGet('Updates!A2:P'),
+      sGet('Updates!A2:T'),
       sGet('NouveauxArticles!A2:M'),
       sGet('SuiviSites!A2:H')
     ]);
@@ -1243,11 +1243,16 @@ async function writeUpd(cbi, u) {
     if (!finalPhotos && idx >= 0 && rows[idx][12]) {
       finalPhotos = rows[idx][12];
     }
-    // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres
-    const row = [cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', finalPhotos, u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')];
+    // Colonnes : A=cbi, B=emp_id, C=cbe, D=site, E=bat, F=etage, G=bureau, H=article, I=serv, J=renouv, K=obs, L=trouve, M=photos, N=by, O=ts, P=criteres, Q=marque, R=modele, S=serie, T=num_amendis
+    const row = [
+      cbi, emp_id, item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '',
+      item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', finalPhotos, u.by,
+      new Date(u.ts).toISOString(), criteres.join(' ; '),
+      item.marque || '', item.modele || '', item.serie || '', item.prod || ''
+    ];
     if (idx >= 0) {
-      // Mise à jour de la ligne existante
-      await sPut(`Updates!A${idx + 2}:P${idx + 2}`, [row]);
+      // Mise à jour de la ligne existante (A:T)
+      await sPut(`Updates!A${idx + 2}:T${idx + 2}`, [row]);
     } else {
       // Nouvelle ligne
       await sAppend('Updates', [row]);
@@ -3047,7 +3052,7 @@ function onSiteChange() {
   const bb = document.getElementById('sel-bat');
   bb.innerHTML = '<option value="">-- Bâtiment --</option>';
   bb.disabled = !s;
-  if (s && HIER[s]) Object.keys(HIER[s]).sort().forEach(b => bb.innerHTML += `<option value="${b}">${b}</option>`);
+  if (s && HIER[s]) Object.keys(HIER[s]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
   document.getElementById('sel-etage').innerHTML = '<option value="">-- Étage --</option>';
   document.getElementById('sel-etage').disabled = true;
   document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
@@ -3061,7 +3066,7 @@ function onBatChange() {
   const ee = document.getElementById('sel-etage');
   ee.innerHTML = '<option value="">-- Étage --</option>';
   ee.disabled = !b;
-  if (b && HIER[s] && HIER[s][b]) Object.keys(HIER[s][b]).sort().forEach(e => ee.innerHTML += `<option value="${e}">${e}</option>`);
+  if (b && HIER[s] && HIER[s][b]) Object.keys(HIER[s][b]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
   document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
   document.getElementById('sel-bureau').disabled = true;
   document.getElementById('loc-stats').style.display = 'none';
@@ -3073,7 +3078,7 @@ function onEtageChange() {
   const bu = document.getElementById('sel-bureau');
   bu.innerHTML = '<option value="">-- Bureau --</option>';
   bu.disabled = !e;
-  if (e && HIER[s] && HIER[s][b] && HIER[s][b][e]) HIER[s][b][e].forEach(br => bu.innerHTML += `<option value="${br}">${br}</option>`);
+  if (e && HIER[s] && HIER[s][b] && HIER[s][b][e]) HIER[s][b][e].forEach(br => bu.innerHTML += `<option value="${esc(br)}">${esc(br)}</option>`);
   document.getElementById('loc-stats').style.display = 'none';
   renderMain();
 }
@@ -3145,17 +3150,17 @@ function navigateTo(site, bat, etage, bureau) {
   const bb = document.getElementById('sel-bat');
   bb.innerHTML = '<option value="">-- Bâtiment --</option>';
   bb.disabled = false;
-  if (HIER[site]) Object.keys(HIER[site]).sort().forEach(b => bb.innerHTML += `<option value="${b}">${b}</option>`);
+  if (HIER[site]) Object.keys(HIER[site]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
   bb.value = bat; curLoc.bat = bat;
   const ee = document.getElementById('sel-etage');
   ee.innerHTML = '<option value="">-- Étage --</option>';
   ee.disabled = false;
-  if (HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${e}">${e}</option>`);
+  if (HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
   ee.value = etage; curLoc.etage = etage;
   const bu = document.getElementById('sel-bureau');
   bu.innerHTML = '<option value="">-- Bureau --</option>';
   bu.disabled = false;
-  if (HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(br => bu.innerHTML += `<option value="${br}">${br}</option>`);
+  if (HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(br => bu.innerHTML += `<option value="${esc(br)}">${esc(br)}</option>`);
   bu.value = bureau; curLoc.bureau = bureau;
   renderMain();
 }
@@ -3245,7 +3250,13 @@ function openTransferModal(item) {
   const newLoc = curLoc.site + ' › ' + curLoc.bat + ' › ' + curLoc.etage + ' › ' + curLoc.bureau;
   const oldCbe = getCbeFromLoc(item.site, item.bat, item.etage, item.bureau);
   const newCbe = getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
-  
+
+  // Listes pour les datalists (famille + article)
+  const fams = Object.keys(FAMS).sort();
+  const allArticles = [];
+  for (const f in FAMS) for (const a of FAMS[f]) allArticles.push({ art: a, fam: f });
+  allArticles.sort((a, b) => a.art.localeCompare(b.art));
+
   showModal(`<div class="modal-drag"></div>
     <div class="modal-head"><h2><i class="ti ti-transfer" style="color:var(--accent)"></i> Article trouvé ailleurs</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
     <div class="modal-body">
@@ -3276,7 +3287,47 @@ function openTransferModal(item) {
           ${newCbe ? `<div style="margin-top:4px;font-family:monospace;font-size:10px;color:var(--success-txt);font-weight:600"><i class="ti ti-barcode" style="font-size:10px"></i> ${esc(newCbe)}</div>` : ''}
         </div>
       </div>
-      
+
+      <!-- Section dépliable : Modifier les caractéristiques de l'article -->
+      <details style="margin-bottom:14px;background:var(--bg2);border-radius:var(--radius);padding:0">
+        <summary style="cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none">
+          <i class="ti ti-edit"></i> Modifier les caractéristiques de l'article
+        </summary>
+        <div style="padding:0 14px 14px;border-top:1px solid var(--border)">
+          <div class="alert alert-info" style="margin:10px 0 14px;font-size:12px">
+            <i class="ti ti-info-circle"></i>
+            <div>Modification du référentiel (famille, type, marque, modèle, série)</div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Famille</label>
+              <input type="text" id="t-fam" list="tFamList" value="${esc(item.fam || '')}" oninput="tFamInput()" autocomplete="off">
+              <datalist id="tFamList">${fams.map(f => `<option value="${esc(f)}"></option>`).join('')}</datalist>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Article</label>
+              <input type="text" id="t-art" list="tArtList" value="${esc(item.art || '')}" oninput="tArtInput()" autocomplete="off">
+              <datalist id="tArtList"></datalist>
+              <div id="t-art-hint" class="txt-xs" style="margin-top:-4px;display:none"></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Marque</label>
+              <input type="text" id="t-marque" value="${esc(item.marque || '')}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Modèle</label>
+              <input type="text" id="t-modele" value="${esc(item.modele || '')}">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">N° de série</label>
+            <input type="text" id="t-serie" value="${esc(item.serie || '')}" inputmode="text">
+          </div>
+        </div>
+      </details>
+
       <!-- Formulaire de mise à jour (comme openEditItem) -->
       <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="t-sv">${ES.map(x => '<option' + (sv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="t-rv">${ER.map(x => '<option' + (rv === x ? ' selected' : '') + '>' + x + '</option>').join('')}</select></div></div>
       <div class="form-group" style="margin-top:14px"><label class="form-label">N° Amendis</label><input type="text" id="t-prod" value="${esc(item.prod || '')}" placeholder="Numéro d'immatriculation Amendis"></div>
@@ -3291,6 +3342,45 @@ function openTransferModal(item) {
         <button class="btn btn-primary" onclick="confirmTransferAndUpdate('${esc(item.cbi)}')"><i class="ti ti-transfer"></i> Transférer et valider</button>
       </div>
     </div>`);
+
+  // Initialiser les datalists et helpers
+  window._T_ALL_ARTICLES = allArticles;
+  refreshTransferArticleDatalist(item.fam || '');
+}
+
+// Helpers pour les datalists de la section "Modifier caractéristiques" dans transfert
+function tFamInput() {
+  const famVal = document.getElementById('t-fam').value.trim();
+  refreshTransferArticleDatalist(famVal);
+}
+function tArtInput() {
+  const artVal = document.getElementById('t-art').value.trim();
+  const hint = document.getElementById('t-art-hint');
+  if (!artVal || !hint) return;
+  const all = window._T_ALL_ARTICLES || [];
+  const exact = all.find(x => x.art.toLowerCase() === artVal.toLowerCase());
+  if (exact) {
+    document.getElementById('t-fam').value = exact.fam;
+    hint.style.display = 'block';
+    hint.style.color = 'var(--success-txt)';
+    hint.innerHTML = `\u2713 Famille auto-renseignée : <strong>${esc(exact.fam)}</strong>`;
+  } else {
+    hint.style.display = 'block';
+    hint.style.color = 'var(--warn-txt)';
+    hint.innerHTML = `\u26a0 Nouvel article — sera créé dans le référentiel`;
+  }
+}
+function refreshTransferArticleDatalist(famVal) {
+  const dl = document.getElementById('tArtList');
+  if (!dl) return;
+  const all = window._T_ALL_ARTICLES || [];
+  let opts = [];
+  if (famVal && FAMS[famVal]) {
+    opts = FAMS[famVal].map(a => `<option value="${esc(a)}"></option>`);
+  } else {
+    opts = all.map(x => `<option value="${esc(x.art)}">${esc(x.fam)}</option>`);
+  }
+  dl.innerHTML = opts.join('');
 }
 
 async function confirmTransferAndUpdate(cbi) {
@@ -3315,12 +3405,57 @@ async function confirmTransferAndUpdate(cbi) {
     ts: Date.now()
   };
 
-  // Si N° Amendis modifié, mettre à jour l'item et la ligne Inventaire
+  // 1bis. Gestion des modifications des CARACTÉRISTIQUES (fam, art, marque, modèle, série)
+  const famEl = document.getElementById('t-fam');
+  const artEl = document.getElementById('t-art');
+  if (famEl && artEl) {
+    const newFam = famEl.value.trim();
+    const newArt = artEl.value.trim();
+    const newMarque = document.getElementById('t-marque').value.trim();
+    const newModele = document.getElementById('t-modele').value.trim();
+    const newSerie = document.getElementById('t-serie').value.trim();
+    const charChanged = (newFam !== (item.fam || '') || newArt !== (item.art || '') ||
+                        newMarque !== (item.marque || '') || newModele !== (item.modele || '') ||
+                        newSerie !== (item.serie || ''));
+    if (charChanged && newFam && newArt) {
+      // Créer la famille si nouvelle
+      let famille_id = null;
+      for (const fid in REL_FAMS) if (REL_FAMS[fid].famille_nom === newFam) { famille_id = fid; break; }
+      if (!famille_id) {
+        famille_id = 'F' + String(Object.keys(REL_FAMS).length + 1).padStart(3, '0');
+        REL_FAMS[famille_id] = { famille_id, famille_nom: newFam };
+        if (!FAMS[newFam]) FAMS[newFam] = [];
+        if (gTok) { try { await sAppend('Familles', [[famille_id, newFam]]); } catch(e) {} }
+      }
+      // Créer l'article si nouveau
+      let article_id = null;
+      for (const aid in REL_ARTS) if (REL_ARTS[aid].article_nom === newArt && REL_ARTS[aid].famille_id === famille_id) { article_id = aid; break; }
+      if (!article_id) {
+        article_id = 'A' + String(Object.keys(REL_ARTS).length + 1).padStart(4, '0');
+        REL_ARTS[article_id] = { article_id, article_nom: newArt, famille_id, famille_nom: newFam };
+        if (!FAMS[newFam].includes(newArt)) FAMS[newFam].push(newArt);
+        if (gTok) { try { await sAppend('Articles', [[article_id, newArt, famille_id]]); } catch(e) {} }
+      }
+      // Mettre à jour l'item
+      const oldArt = item.art;
+      item.fam = newFam;
+      item.art = newArt;
+      item.article_id = article_id;
+      item.marque = newMarque;
+      item.modele = newModele;
+      item.serie = newSerie;
+      logActivity('EDIT_ITEM', `${oldArt} → ${newArt}${newMarque ? ' / ' + newMarque : ''}${newModele ? ' ' + newModele : ''}`, cbi);
+    }
+  }
+
+  // Si N° Amendis modifié, mettre à jour l'item
   const prodChanged = newProd !== (item.prod || '');
   if (prodChanged) {
     item.prod = newProd;
-    try { await updateInventoryRow(item); } catch(e) {}
   }
+
+  // Synchroniser la ligne Inventaire si caractéristiques ou N° Amendis modifié
+  if (gTok) { try { await updateInventoryRow(item); } catch(e) {} }
 
   // Ajouter la mention du transfert dans l'observation
   const transferNote = 'TRANSFÉRÉ de ' + oldLoc + ' le ' + new Date().toLocaleDateString('fr-FR');
@@ -3347,25 +3482,21 @@ async function confirmTransferAndUpdate(cbi) {
   if (!LOC_INDEX[newKey]) LOC_INDEX[newKey] = [];
   LOC_INDEX[newKey].push(item);
 
-  // 5. Mettre à jour l'état
+  // 5. Mettre à jour l'état local
   updates[cbi] = u;
-
-  // 6. Écrire dans Google Sheets (avec emp_id et libellés)
-  if (gTok) {
-    try {
-      await sAppend('Updates', [[cbi, newEmpId, item.cbe || '', item.site, item.bat, item.etage, item.bureau, item.art || '', u.serv, u.renouv, u.obs, u.trouve, '', u.by, new Date(u.ts).toISOString()]]);
-    } catch(e) { console.error('Transfer write error', e); }
-  }
 
   invalidateStatsCache();
   invalidateAllItemsCache();
-    invalidateCbeIndex();
+  invalidateCbeIndex();
   saveLocal();
   closeModal();
   renderMain();
   renderDataStatus();
   showToast('✓ Article transféré et inventorié', 'success');
   logActivity('TRANSFER', `${oldLoc} → ${curLoc.site} › ${curLoc.bat} › ${curLoc.etage} › ${curLoc.bureau}`, cbi);
+
+  // 6. Écrire dans Google Sheets via writeUpd (upsert + colonnes P/Q/R/S/T)
+  await writeUpd(cbi, u);
 }
 
 // ---------- EDIT/ADD ITEMS ----------
@@ -3960,11 +4091,16 @@ async function updatePhotosInSheet(cbi) {
       // Colonne M = photos (13ème colonne) — pas besoin de toucher au reste
       await sPut(`Updates!M${idx + 2}`, [[links]]);
     } else {
-      // Pas de ligne existante : créer une ligne avec photos uniquement
+      // Pas de ligne existante : créer une ligne complète avec photos + caractéristiques
       const u = updates[cbi] || { serv: 'EN SERVICE', renouv: 'BON', obs: '', by: currentUser, ts: Date.now() };
       const criteres = extractCriteresFromObs(u.obs || '');
       const obsClean = (u.obs || '').split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
-      await sAppend('Updates', [[cbi, item.emp_id || '', item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '', item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', links, u.by, new Date(u.ts).toISOString(), criteres.join(' ; ')]]);
+      await sAppend('Updates', [[
+        cbi, item.emp_id || '', item.cbe || '', item.site || '', item.bat || '', item.etage || '', item.bureau || '',
+        item.art || '', u.serv, u.renouv, obsClean, u.trouve || '', links, u.by,
+        new Date(u.ts).toISOString(), criteres.join(' ; '),
+        item.marque || '', item.modele || '', item.serie || '', item.prod || ''
+      ]]);
     }
   } catch(e) { console.error('Photo sheet update error', e); }
 }
@@ -4533,9 +4669,9 @@ function openAddLocation() {
   showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-group"><label class="form-label">Site *</label><select id="al-site" onchange="alSite()">${sites.map(s => `<option>${s}</option>`).join('')}<option value="__n">+ Nouveau site…</option></select><input type="text" id="al-site-n" placeholder="Nom du site" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bâtiment *</label><select id="al-bat" onchange="alBat()"><option value="">-- Choisir --</option></select><input type="text" id="al-bat-n" placeholder="Nom du bâtiment" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Étage *</label><select id="al-etage" onchange="alEtage()"><option value="">-- Choisir --</option></select><input type="text" id="al-etage-n" placeholder="Ex: RDC, ETAGE 1…" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bureau / Local *</label><select id="al-bureau" onchange="alBureau()"><option value="">-- Choisir --</option></select><input type="text" id="al-bureau-n" placeholder="Nom du bureau" style="display:none;margin-top:8px"></div><div class="form-row" style="margin-bottom:0"><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="al-cbe" placeholder="31000999" inputmode="text"></div><div class="form-group"><label class="form-label">Type</label><input type="text" id="al-type" placeholder="BUREAU, SALLE…"></div></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveLoc()"><i class="ti ti-map-pin"></i> Créer</button></div></div>`);
   alSite();
 }
-function alSite() { const v = document.getElementById('al-site').value; document.getElementById('al-site-n').style.display = v === '__n' ? 'block' : 'none'; const bb = document.getElementById('al-bat'); bb.innerHTML = '<option value="">-- Choisir --</option>'; if (v && v !== '__n' && HIER[v]) Object.keys(HIER[v]).sort().forEach(b => bb.innerHTML += `<option>${b}</option>`); bb.innerHTML += '<option value="__n">+ Nouveau bâtiment…</option>'; alBat(); }
-function alBat() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value; document.getElementById('al-bat-n').style.display = bat === '__n' ? 'block' : 'none'; const ee = document.getElementById('al-etage'); ee.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option>${e}</option>`); ee.innerHTML += '<option value="__n">+ Nouvel étage…</option>'; alEtage(); }
-function alEtage() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value, etage = document.getElementById('al-etage').value; document.getElementById('al-etage-n').style.display = etage === '__n' ? 'block' : 'none'; const bu = document.getElementById('al-bureau'); bu.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && etage && etage !== '__n' && HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(b => bu.innerHTML += `<option>${b}</option>`); bu.innerHTML += '<option value="__n">+ Nouveau bureau…</option>'; document.getElementById('al-bureau-n').style.display = 'none'; }
+function alSite() { const v = document.getElementById('al-site').value; document.getElementById('al-site-n').style.display = v === '__n' ? 'block' : 'none'; const bb = document.getElementById('al-bat'); bb.innerHTML = '<option value="">-- Choisir --</option>'; if (v && v !== '__n' && HIER[v]) Object.keys(HIER[v]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`); bb.innerHTML += '<option value="__n">+ Nouveau bâtiment…</option>'; alBat(); }
+function alBat() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value; document.getElementById('al-bat-n').style.display = bat === '__n' ? 'block' : 'none'; const ee = document.getElementById('al-etage'); ee.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`); ee.innerHTML += '<option value="__n">+ Nouvel étage…</option>'; alEtage(); }
+function alEtage() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value, etage = document.getElementById('al-etage').value; document.getElementById('al-etage-n').style.display = etage === '__n' ? 'block' : 'none'; const bu = document.getElementById('al-bureau'); bu.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && etage && etage !== '__n' && HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(b => bu.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`); bu.innerHTML += '<option value="__n">+ Nouveau bureau…</option>'; document.getElementById('al-bureau-n').style.display = 'none'; }
 function alBureau() { document.getElementById('al-bureau-n').style.display = document.getElementById('al-bureau').value === '__n' ? 'block' : 'none'; }
 async function saveLoc() {
   const site = document.getElementById('al-site').value === '__n' ? document.getElementById('al-site-n').value.trim() : document.getElementById('al-site').value;
