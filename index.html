@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.1 -->
+<!-- VERSION 11.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -246,14 +246,15 @@ textarea{min-height:80px;resize:vertical}
 .stat-val{font-size:24px;font-weight:800;letter-spacing:-.02em}
 
 /* ── SCAN ZONE ── */
-.scan-zone{background:linear-gradient(135deg,var(--accent-bg),var(--bg));border:2px dashed var(--accent);border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;transition:var(--transition);position:relative;overflow:hidden}
-.scan-zone::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:conic-gradient(from 0deg,transparent,var(--accent-bg),transparent);opacity:0;animation:none;transition:opacity .3s}
+.scan-zone{background:linear-gradient(135deg,var(--accent-bg),var(--bg));border:2px dashed var(--accent);border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;transition:var(--transition);position:relative;overflow:hidden;cursor:text}
+.scan-zone::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:conic-gradient(from 0deg,transparent,var(--accent-bg),transparent);opacity:0;animation:none;transition:opacity .3s;pointer-events:none}
 .scan-zone:focus-within{border-style:solid;box-shadow:0 0 0 3px var(--info-ring);background:var(--bg)}
 .scan-zone:focus-within::before{opacity:.3;animation:scanPulse 3s linear infinite}
 @keyframes scanPulse{to{transform:rotate(360deg)}}
-.scan-zone i{font-size:26px;color:var(--accent);flex-shrink:0}
-.scan-zone input{margin:0;border:none;background:transparent;flex:1;font-size:16px;padding:0;min-width:0;font-weight:500}
+.scan-zone i{font-size:26px;color:var(--accent);flex-shrink:0;pointer-events:none}
+.scan-zone input{margin:0;border:none;background:transparent;flex:1;font-size:16px;padding:0;min-width:0;font-weight:500;position:relative;z-index:2}
 .scan-zone input:focus{outline:none;box-shadow:none}
+.scan-zone .scan-hint{pointer-events:none}
 .scan-hint{font-size:12px;color:var(--text3);white-space:nowrap}
 .search-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
 .search-row input{flex:1;min-width:180px;margin:0}
@@ -457,8 +458,8 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
       <div class="sidebar-inner">
         <div class="sidebar-section">
           <div class="sidebar-label">Scanner emplacement</div>
-          <div class="loc-scan-row">
-            <i class="ti ti-qrcode" style="font-size:20px;color:var(--text2)"></i>
+          <div class="loc-scan-row" onclick="document.getElementById('loc-scan-inp').focus()" style="cursor:text">
+            <i class="ti ti-qrcode" style="font-size:20px;color:var(--text2);pointer-events:none"></i>
             <input type="text" id="loc-scan-inp" placeholder="Code barre emplacement…" onkeydown="onLocScanKey(event)" autocomplete="off" inputmode="text">
           </div>
           <div class="loc-feedback" id="loc-feedback"></div>
@@ -2049,7 +2050,7 @@ function renderMain() {
     </div>
 
     <!-- Zone de scan avec indicateurs 3 cas -->
-    <div class="scan-zone">
+    <div class="scan-zone" onclick="document.getElementById('scan-inp').focus()">
       <i class="ti ti-scan"></i>
       <input type="text" id="scan-inp" placeholder="Scanner un code barre puis Entrée…" onkeydown="onScanKey(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
@@ -2287,7 +2288,7 @@ function renderLocationsView() {
     </div>
 
     <!-- Zone de scan pour accès rapide -->
-    <div class="scan-zone" style="margin-bottom:10px">
+    <div class="scan-zone" style="margin-bottom:10px" onclick="document.getElementById('loc-search-scan').focus()">
       <i class="ti ti-scan"></i>
       <input type="text" id="loc-search-scan" placeholder="Scanner code barre emplacement…" onkeydown="onLocSearchScan(event)" autocomplete="off" inputmode="text">
       <span class="scan-hint">↵</span>
