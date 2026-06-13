@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.8 -->
+<!-- VERSION 11.9 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -45,7 +45,7 @@
 (function() {
   if (!('serviceWorker' in navigator)) return;
   const swCode = `
-    const CACHE = 'inv-v9-1';
+    const CACHE = 'inv-v11-9';
     self.addEventListener('install', e => { self.skipWaiting(); });
     self.addEventListener('activate', e => {
       e.waitUntil(
@@ -786,6 +786,91 @@ function savePhotos() {
   try { localStorage.setItem('inv_photos', JSON.stringify(photos)); } catch(e) {}
 }
 
+// ─────────────────────────────────────────────────────────────
+//  FILE D'ATTENTE PHOTOS HORS-LIGNE (IndexedDB)
+//  Les photos prises sans connexion sont stockées en blob et
+//  uploadées automatiquement au retour de la connexion.
+// ─────────────────────────────────────────────────────────────
+let _photoDB = null;
+function openPhotoDB() {
+  return new Promise((resolve, reject) => {
+    if (_photoDB) return resolve(_photoDB);
+    const req = indexedDB.open('inv_photo_queue', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('queue')) {
+        db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = (e) => { _photoDB = e.target.result; resolve(_photoDB); };
+    req.onerror = (e) => reject(e);
+  });
+}
+// Ajoute une photo à la file offline (stocke le blob)
+async function queuePhotoOffline(cbi, blob, photoIndex) {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').add({ cbi, blob, photoIndex, ts: Date.now() });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = (e) => reject(e);
+    });
+  } catch(e) { console.error('queuePhotoOffline', e); return false; }
+}
+// Récupère toutes les photos en attente
+async function getQueuedPhotos() {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('queue', 'readonly');
+      const req = tx.objectStore('queue').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  } catch(e) { return []; }
+}
+// Supprime une photo de la file après upload réussi
+async function removeQueuedPhoto(id) {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').delete(id);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  } catch(e) { return false; }
+}
+// Compte les photos en attente (pour l'indicateur)
+async function countQueuedPhotos() {
+  const all = await getQueuedPhotos();
+  return all.length;
+}
+// Upload toutes les photos en attente (appelé au retour online)
+async function flushQueuedPhotos() {
+  if (!gTok || !navigator.onLine) return 0;
+  const queued = await getQueuedPhotos();
+  if (!queued.length) return 0;
+  let done = 0;
+  for (const q of queued) {
+    try {
+      const file = new File([q.blob], `offline_${q.cbi}_${q.photoIndex}.jpg`, { type: q.blob.type || 'image/jpeg' });
+      const result = await uploadPhotoToDrive(file, q.cbi, q.photoIndex);
+      if (!photos[q.cbi]) photos[q.cbi] = [];
+      // Retirer l'entrée "pending" correspondante (preview locale)
+      photos[q.cbi] = photos[q.cbi].filter(p => !(p.pending && p.name === `offline_${q.photoIndex}.jpg`));
+      // Ajouter la vraie photo uploadée (éviter doublons)
+      if (!photos[q.cbi].some(p => p.id === result.id)) photos[q.cbi].push(result);
+      await removeQueuedPhoto(q.id);
+      await updatePhotosInSheet(q.cbi);
+      done++;
+    } catch(e) { console.error('flushQueuedPhotos', e); break; }
+  }
+  if (done > 0) { savePhotos(); renderPendingIndicator(); }
+  return done;
+}
+
 // ---------- GOOGLE AUTH ----------
 function startGoogleLogin() {
   const redirect = window.location.href.split('#')[0];
@@ -908,20 +993,27 @@ function renderPendingIndicator() {
   if (!el) return;
   const n = pendingWrites.length;
   const offline = !navigator.onLine;
-  // Si hors-ligne, toujours afficher l'indicateur (même sans écritures en attente)
-  if (n === 0 && !offline) { el.style.display = 'none'; return; }
-  el.style.display = '';
-  if (offline) {
-    el.className = 'sync-indicator offline';
-    el.title = n ? `Hors-ligne — ${n} modification(s) en attente. Synchronisation auto au retour de connexion.` : 'Mode hors-ligne — consultation et saisie disponibles, sync au retour.';
-    el.innerHTML = `<i class="ti ti-cloud-off"></i>${n ? n + ' hors-ligne' : 'Hors-ligne'}`;
-    el.onclick = () => showToast(n ? `${n} modification(s) en attente — se synchroniseront automatiquement au retour de connexion` : 'Mode hors-ligne actif', 'info');
-  } else if (n > 0) {
-    el.className = 'sync-indicator pending';
-    el.title = `${n} écriture(s) en attente — cliquez pour forcer la synchronisation`;
-    el.innerHTML = `<i class="ti ti-cloud-upload"></i>${n} en attente`;
-    el.onclick = () => { if (gTok && !isSyncing) syncNow(); };
-  }
+  // Compter les photos en attente (asynchrone, mise à jour différée)
+  countQueuedPhotos().then(np => {
+    const total = n + np;
+    if (total === 0 && !offline) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const parts = [];
+    if (n > 0) parts.push(`${n} fiche(s)`);
+    if (np > 0) parts.push(`${np} photo(s)`);
+    const detail = parts.length ? parts.join(' + ') : '';
+    if (offline) {
+      el.className = 'sync-indicator offline';
+      el.title = detail ? `Hors-ligne — ${detail} en attente. Synchronisation auto au retour de connexion.` : 'Mode hors-ligne — consultation et saisie disponibles, sync au retour.';
+      el.innerHTML = `<i class="ti ti-cloud-off"></i>${detail ? detail + ' hors-ligne' : 'Hors-ligne'}`;
+      el.onclick = () => showToast(detail ? `${detail} en attente — synchronisation automatique au retour de connexion` : 'Mode hors-ligne actif — vos saisies sont sauvegardées localement', 'info');
+    } else if (total > 0) {
+      el.className = 'sync-indicator pending';
+      el.title = `${detail} en attente — cliquez pour forcer la synchronisation`;
+      el.innerHTML = `<i class="ti ti-cloud-upload"></i>${detail} en attente`;
+      el.onclick = async () => { if (gTok && !isSyncing) { await pushPending(); await flushQueuedPhotos(); syncNow(); } };
+    }
+  });
 }
 function disconnectGoogle() {
   gTok = null; gTokExpiry = 0;
@@ -1883,6 +1975,7 @@ async function syncNow() {
   try {
     await ensureSheets();
     await pushPending();
+    await flushQueuedPhotos();  // Uploader les photos prises hors-ligne
     await flushActivityLog();
     await pullAll();
     lastSync = Date.now();
@@ -4536,12 +4629,34 @@ function renderPhotoSection(cbi) {
 async function handlePhotoCapture(event, cbi) {
   const files = [...event.target.files];
   if (!files.length) return;
-  if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; }
-  if (!navigator.onLine) { showToast('Photos indisponibles hors-ligne — reconnectez-vous pour les ajouter (la saisie texte reste possible)', 'warn'); event.target.value = ''; return; }
+
+  // MODE HORS-LIGNE : compresser et mettre en file d'attente (IndexedDB)
+  if (!gTok || !navigator.onLine) {
+    showToast(`${files.length} photo(s) en attente — upload au retour de la connexion`, 'info');
+    try {
+      if (!photos[cbi]) photos[cbi] = [];
+      const startIdx = photos[cbi].length;
+      for (let i = 0; i < files.length; i++) {
+        const compressed = await compressImage(files[i], 1200, 0.82);
+        const previewUrl = URL.createObjectURL(compressed);
+        // Ajouter une entrée locale "en attente" pour affichage immédiat
+        photos[cbi].push({ id: '', viewUrl: previewUrl, thumbUrl: previewUrl, name: `offline_${startIdx + i + 1}.jpg`, pending: true });
+        // Stocker le blob dans IndexedDB pour upload ultérieur
+        await queuePhotoOffline(cbi, compressed, startIdx + i + 1);
+      }
+      savePhotos();
+      const sec = document.getElementById(`photo-section-${cbi}`);
+      if (sec) sec.outerHTML = renderPhotoSection(cbi);
+      renderPendingIndicator();
+    } catch(e) { showToast('Erreur stockage photo: ' + e.message, 'danger'); }
+    event.target.value = '';
+    return;
+  }
+
+  // MODE EN LIGNE : upload direct
   showToast(`Upload de ${files.length} photo(s)…`, 'info');
   try {
     if (!photos[cbi]) photos[cbi] = [];
-    // Uploader toutes les photos en parallèle (gain notable sur multi-photos)
     const startIdx = photos[cbi].length;
     const uploaded = await Promise.all(files.map((f, i) => uploadPhotoToDrive(f, cbi, startIdx + i + 1)));
     photos[cbi].push(...uploaded);
@@ -4550,7 +4665,24 @@ async function handlePhotoCapture(event, cbi) {
     const sec = document.getElementById(`photo-section-${cbi}`);
     if (sec) sec.outerHTML = renderPhotoSection(cbi);
     showToast('Photos uploadées', 'success');
-  } catch(err) { showToast('Erreur upload: ' + err.message, 'danger'); }
+  } catch(err) {
+    // Échec réseau pendant l'upload → bascule en file d'attente
+    showToast('Upload échoué — photos mises en attente', 'warn');
+    try {
+      if (!photos[cbi]) photos[cbi] = [];
+      const startIdx = photos[cbi].length;
+      for (let i = 0; i < files.length; i++) {
+        const compressed = await compressImage(files[i], 1200, 0.82);
+        const previewUrl = URL.createObjectURL(compressed);
+        photos[cbi].push({ id: '', viewUrl: previewUrl, thumbUrl: previewUrl, name: `offline_${startIdx + i + 1}.jpg`, pending: true });
+        await queuePhotoOffline(cbi, compressed, startIdx + i + 1);
+      }
+      savePhotos();
+      const sec = document.getElementById(`photo-section-${cbi}`);
+      if (sec) sec.outerHTML = renderPhotoSection(cbi);
+      renderPendingIndicator();
+    } catch(e) {}
+  }
   event.target.value = '';
 }
 async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) return; const p = photos[cbi] && photos[cbi][idx]; if (p && gTok && p.id) { try { await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${gTok}` } }); } catch(e) {} } photos[cbi].splice(idx, 1); if (!photos[cbi].length) delete photos[cbi]; savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photo supprimée', 'success'); }
@@ -5230,13 +5362,18 @@ function init() {
   // ── Écouter les changements de connectivité réseau ──
   window.addEventListener('online', () => {
     renderPendingIndicator();
-    if (gTok && pendingWrites.length) {
+    if (gTok && (pendingWrites.length)) {
       showToast('Connexion rétablie — synchronisation…', 'info');
-      pushPending().then(() => {
+      pushPending().then(async () => {
+        await flushQueuedPhotos();
         if (typeof syncNow === 'function') syncNow();
       });
     } else if (gTok) {
       showToast('Connexion rétablie', 'success');
+      // Vérifier aussi les photos en attente
+      flushQueuedPhotos().then(n => {
+        if (n > 0) { showToast(`${n} photo(s) synchronisée(s)`, 'success'); if (typeof syncNow === 'function') syncNow(); }
+      });
     }
   });
   window.addEventListener('offline', () => {
@@ -5263,6 +5400,10 @@ function init() {
         await loadFromSheets();
         renderUserBadge();
         logActivity('LOGIN', `Connexion Google (${googleProfile.email || ''})`, '');
+        // Uploader les photos prises hors-ligne lors d'une session précédente
+        if (navigator.onLine) {
+          flushQueuedPhotos().then(n => { if (n > 0) showToast(`${n} photo(s) hors-ligne synchronisée(s)`, 'success'); });
+        }
       })();
       return;
     }
