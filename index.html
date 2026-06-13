@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.4 -->
+<!-- VERSION 11.6 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -715,7 +715,8 @@ function showToast(msg, type = 'info') {
 }
 
 function showModal(html) {
-  document.getElementById('modal').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+  // Modale verrouillée : pas de fermeture sur clic en dehors. Seul le bouton ✕ ou Annuler ferme.
+  document.getElementById('modal').innerHTML = `<div class="modal-overlay"><div class="modal">${html}</div></div>`;
 }
 function closeModal() {
   document.getElementById('modal').innerHTML = '';
@@ -982,7 +983,50 @@ function getAllItems() {
   if (_allItemsCache === null) _allItemsCache = DB.concat(newItems);
   return _allItemsCache;
 }
-function invalidateAllItemsCache() { _allItemsCache = null; }
+function invalidateAllItemsCache() { _allItemsCache = null; _marquesCache = null; _modelesCache = null; }
+
+// Cache des marques et modèles (extraits de tous les articles existants)
+let _marquesCache = null;       // Set : toutes les marques (uniques, triées)
+let _modelesCache = null;       // {marque: Set} ou {article_nom: Set}
+
+// Construit la liste de toutes les marques uniques, triées A→Z
+function getMarquesList() {
+  if (_marquesCache === null) {
+    const s = new Set();
+    for (const r of getAllItems()) {
+      if (r.marque && r.marque.trim()) s.add(r.marque.trim());
+    }
+    _marquesCache = [...s].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+  return _marquesCache;
+}
+
+// Retourne les modèles disponibles pour une marque donnée (ou tous si pas de marque)
+function getModelesList(marque) {
+  if (_modelesCache === null) {
+    _modelesCache = {};
+    for (const r of getAllItems()) {
+      const m = (r.marque || '').trim();
+      const mo = (r.modele || '').trim();
+      if (!mo) continue;
+      const key = m || '__nomarque__';
+      if (!_modelesCache[key]) _modelesCache[key] = new Set();
+      _modelesCache[key].add(mo);
+    }
+    // Trier
+    for (const k in _modelesCache) {
+      _modelesCache[k] = [..._modelesCache[k]].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+    }
+  }
+  if (!marque) {
+    // Toutes les modèles confondus
+    const all = new Set();
+    for (const k in _modelesCache) for (const v of _modelesCache[k]) all.add(v);
+    return [...all].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+  return _modelesCache[marque.trim()] || [];
+}
+
 async function ensureSheets() {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
   if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
@@ -1083,6 +1127,9 @@ async function pullAll() {
     updates = {};
     UPDATES_INDEX = {};
     UPDATES_PHOTOS_CACHE = {};
+    // Synchroniser le cache photos local avec les URLs présentes dans la feuille
+    // (permet aux photos d'un opérateur d'apparaître chez les autres)
+    photos = photos || {};
     const updRows = updData.values || [];
     UPDATES_INDEX_SIZE = updRows.length;
     for (let i = 0; i < updRows.length; i++) {
@@ -1092,7 +1139,23 @@ async function pullAll() {
       if (!cbi) continue;
       // Cache le numéro de ligne et les photos (pour éviter les sGet répétés lors des writes)
       UPDATES_INDEX[cbi] = i;
-      if (photosCol) UPDATES_PHOTOS_CACHE[cbi] = photosCol;
+      if (photosCol) {
+        UPDATES_PHOTOS_CACHE[cbi] = photosCol;
+        // Reconstruire photos[cbi] à partir des URLs partagées (visibles pour tous les opérateurs)
+        const urls = photosCol.split('\n').map(u => u.trim()).filter(Boolean);
+        // Préserver les photos locales si elles ont des données supplémentaires (id Drive, etc.)
+        const localPhotos = photos[cbi] || [];
+        photos[cbi] = urls.map(url => {
+          // Si la photo est déjà connue localement, conserver ses métadonnées
+          const local = localPhotos.find(p => p.viewUrl === url);
+          if (local) return local;
+          // Sinon créer une entrée minimale (juste l'URL)
+          // Extraire l'ID Drive de l'URL si possible (format: /file/d/{id}/view)
+          const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+          const driveId = match ? match[1] : '';
+          return { viewUrl: url, id: driveId, thumbnailUrl: driveId ? `https://drive.google.com/thumbnail?id=${driveId}&sz=w400` : url };
+        });
+      }
       const t = ts ? new Date(ts).getTime() : 0;
       if (!updates[cbi] || t > updates[cbi].ts) {
         // Reconstruire l'observation avec les critères en première ligne (pour pré-cocher à l'ouverture)
@@ -1177,6 +1240,7 @@ async function pullAll() {
     invalidateCbeIndex();
     invalidateStatsCache();
     saveLocal();
+    savePhotos();  // Persister les photos partagées entre opérateurs
   } catch(e) {
     console.error('pullAll error', e);
   }
@@ -1794,7 +1858,7 @@ function buildHier() {
   // Pré-calculer les stats par site/bat/etage
   _statsCache = {};
   const ss = document.getElementById('sel-site');
-  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort().map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (ss) ss.innerHTML = '<option value="">-- Site --</option>' + Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
 }
 let _statsCache = {};
 function getStatsFor(site, bat, etage, bureau) {
@@ -2279,7 +2343,7 @@ function renderTable() {
 // ---------- LOCATIONS VIEW ----------
 function renderLocationsView() {
   const main = document.getElementById('main');
-  const sites = Object.keys(HIER).sort();
+  const sites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   if (!sites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
   let html = `
     <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -2745,6 +2809,7 @@ async function saveRefArticle() {
       try { await sAppend('Familles', [[famille_id, famNom]]); }
       catch(e) { console.error('Append Famille', e); }
     }
+    logActivity('ADD_FAMILLE', famNom, famille_id);
   }
 
   // 2. Créer l'article
@@ -2951,9 +3016,9 @@ function getBureauDashStatut(stats) {
 // Construire la liste de tous les bureaux avec leurs stats
 function buildDashBureauData() {
   const data = [];
-  for (const site of Object.keys(HIER).sort()) {
-    for (const bat of Object.keys(HIER[site]).sort()) {
-      for (const etage of Object.keys(HIER[site][bat]).sort()) {
+  for (const site of Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
+    for (const bat of Object.keys(HIER[site]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
+      for (const etage of Object.keys(HIER[site][bat]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
         for (const bureau of HIER[site][bat][etage]) {
           const stats = getStatsFor(site, bat, etage, bureau);
           // Inclure aussi les bureaux vides (0 article) — ils apparaîtront en "À INVENTORIER"
@@ -2974,7 +3039,7 @@ function renderDashboard() {
   const pct = tot ? Math.round(inv / tot * 100) : 0;
   const synInfo = lastSync ? `Sync: ${new Date(lastSync).toLocaleTimeString('fr-FR')}` : (gTok ? 'Connecté' : 'Non connecté');
 
-  const sites = Object.keys(HIER).sort();
+  const sites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   const siteOpts = ['<option value="all">Tous les sites</option>']
     .concat(sites.map(s => `<option value="${esc(s)}" ${UF.dashSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
@@ -2982,7 +3047,7 @@ function renderDashboard() {
   // Bâtiments dépendant du site choisi
   let batsAvailable = [];
   if (UF.dashSiteFilter !== 'all' && HIER[UF.dashSiteFilter]) {
-    batsAvailable = Object.keys(HIER[UF.dashSiteFilter]).sort();
+    batsAvailable = Object.keys(HIER[UF.dashSiteFilter]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   }
   const batOpts = ['<option value="all">Tous les bâtiments</option>']
     .concat(batsAvailable.map(b => `<option value="${esc(b)}" ${UF.dashBatFilter === b ? 'selected' : ''}>${esc(b)}</option>`))
@@ -2992,7 +3057,7 @@ function renderDashboard() {
   let etagesAvailable = [];
   if (UF.dashSiteFilter !== 'all' && UF.dashBatFilter !== 'all' &&
       HIER[UF.dashSiteFilter] && HIER[UF.dashSiteFilter][UF.dashBatFilter]) {
-    etagesAvailable = Object.keys(HIER[UF.dashSiteFilter][UF.dashBatFilter]).sort();
+    etagesAvailable = Object.keys(HIER[UF.dashSiteFilter][UF.dashBatFilter]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   }
   const etageOpts = ['<option value="all">Tous les étages</option>']
     .concat(etagesAvailable.map(e => `<option value="${esc(e)}" ${UF.dashEtageFilter === e ? 'selected' : ''}>${esc(e)}</option>`))
@@ -3193,7 +3258,7 @@ function onSiteChange() {
   const bb = document.getElementById('sel-bat');
   bb.innerHTML = '<option value="">-- Bâtiment --</option>';
   bb.disabled = !s;
-  if (s && HIER[s]) Object.keys(HIER[s]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
+  if (s && HIER[s]) Object.keys(HIER[s]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
   document.getElementById('sel-etage').innerHTML = '<option value="">-- Étage --</option>';
   document.getElementById('sel-etage').disabled = true;
   document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
@@ -3207,7 +3272,7 @@ function onBatChange() {
   const ee = document.getElementById('sel-etage');
   ee.innerHTML = '<option value="">-- Étage --</option>';
   ee.disabled = !b;
-  if (b && HIER[s] && HIER[s][b]) Object.keys(HIER[s][b]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
+  if (b && HIER[s] && HIER[s][b]) Object.keys(HIER[s][b]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
   document.getElementById('sel-bureau').innerHTML = '<option value="">-- Bureau --</option>';
   document.getElementById('sel-bureau').disabled = true;
   document.getElementById('loc-stats').style.display = 'none';
@@ -3291,12 +3356,12 @@ function navigateTo(site, bat, etage, bureau) {
   const bb = document.getElementById('sel-bat');
   bb.innerHTML = '<option value="">-- Bâtiment --</option>';
   bb.disabled = false;
-  if (HIER[site]) Object.keys(HIER[site]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
+  if (HIER[site]) Object.keys(HIER[site]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
   bb.value = bat; curLoc.bat = bat;
   const ee = document.getElementById('sel-etage');
   ee.innerHTML = '<option value="">-- Étage --</option>';
   ee.disabled = false;
-  if (HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
+  if (HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`);
   ee.value = etage; curLoc.etage = etage;
   const bu = document.getElementById('sel-bureau');
   bu.innerHTML = '<option value="">-- Bureau --</option>';
@@ -3393,7 +3458,7 @@ function openTransferModal(item) {
   const newCbe = getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
 
   // Listes pour les datalists (famille + article)
-  const fams = Object.keys(FAMS).sort();
+  const fams = Object.keys(FAMS).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   const allArticles = [];
   for (const f in FAMS) for (const a of FAMS[f]) allArticles.push({ art: a, fam: f });
   allArticles.sort((a, b) => a.art.localeCompare(b.art));
@@ -3455,11 +3520,12 @@ function openTransferModal(item) {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Marque</label>
-              <input type="text" id="t-marque" value="${esc(item.marque || '')}">
+              <input type="text" id="t-marque" value="${esc(item.marque || '')}" list="marquesList" oninput="onMarqueChange('t')" autocomplete="off">
             </div>
             <div class="form-group">
               <label class="form-label">Modèle</label>
-              <input type="text" id="t-modele" value="${esc(item.modele || '')}">
+              <input type="text" id="t-modele" value="${esc(item.modele || '')}" list="tModelesList" autocomplete="off">
+              <datalist id="tModelesList"></datalist>
             </div>
           </div>
           <div class="form-group">
@@ -3487,6 +3553,8 @@ function openTransferModal(item) {
   // Initialiser les datalists et helpers
   window._T_ALL_ARTICLES = allArticles;
   refreshTransferArticleDatalist(item.fam || '');
+  refreshMarquesDatalist();
+  onMarqueChange('t');
 }
 
 // Helpers pour les datalists de la section "Modifier caractéristiques" dans transfert
@@ -3644,7 +3712,11 @@ async function confirmTransferAndUpdate(cbi) {
 function openEditItem_cbi(cbi) { const i = findItemByCbi(cbi); if (i) openEditItem(i); }
 function openEditItem(item) {
   const u = updates[item.cbi] || {};
-  const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON', obs = u.obs !== undefined ? u.obs : (item.obs || '');
+  const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON';
+  // Observation d'origine (depuis Inventaire) — lecture seule
+  const originalObs = (item.obs || '').trim();
+  // Observation de mise à jour (depuis Updates) — éditable
+  const obs = u.obs !== undefined ? u.obs : '';
   // Construire les options de bureaux groupés par site/bat/etage (avec CBE entre crochets)
   const allLocs = [];
   for (const site in HIER) {
@@ -3663,7 +3735,7 @@ function openEditItem(item) {
   const locOptions = allLocs.map(l => `<option value="${esc(l.value)}"${l.value === currentLocVal ? ' selected' : ''}>${esc(l.label)}</option>`).join('');
 
   // Liste de tous les articles + familles pour recherche
-  const fams = Object.keys(FAMS).sort();
+  const fams = Object.keys(FAMS).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   const allArticles = [];
   for (const f in FAMS) for (const a of FAMS[f]) allArticles.push({ art: a, fam: f });
   allArticles.sort((a, b) => a.art.localeCompare(b.art));
@@ -3704,11 +3776,12 @@ function openEditItem(item) {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Marque</label>
-            <input type="text" id="e-marque" value="${esc(item.marque || '')}">
+            <input type="text" id="e-marque" value="${esc(item.marque || '')}" list="marquesList" oninput="onMarqueChange('e')" autocomplete="off">
           </div>
           <div class="form-group">
             <label class="form-label">Modèle</label>
-            <input type="text" id="e-modele" value="${esc(item.modele || '')}">
+            <input type="text" id="e-modele" value="${esc(item.modele || '')}" list="eModelesList" autocomplete="off">
+            <datalist id="eModelesList"></datalist>
           </div>
         </div>
         <div class="form-group">
@@ -3722,11 +3795,13 @@ function openEditItem(item) {
       </div>
     </details>
 
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide('e', extractCriteresFromObs(obs))}<div class="form-group" style="margin-top:14px"><label class="form-label">Observation</label><textarea id="e-obs" rows="3">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide('e', extractCriteresFromObs(obs))}${originalObs ? `<div class="form-group" style="margin-top:14px"><label class="form-label" style="color:var(--text2)"><i class="ti ti-file-text"></i> Observation initiale (inventaire d'origine)</label><div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--text2);font-style:italic;white-space:pre-wrap">${esc(originalObs)}</div></div>` : ''}<div class="form-group" style="margin-top:14px"><label class="form-label"><i class="ti ti-edit"></i> Observation de la mise à jour</label><textarea id="e-obs" rows="3" placeholder="Notes sur l'état actuel, observations spécifiques…">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
 
   // Stocker la liste complète d'articles pour les datalists dépliables
   window._E_ALL_ARTICLES = allArticles;
   refreshEditArticleDatalist(item.fam || '');
+  refreshMarquesDatalist();
+  onMarqueChange('e');
 
   // Listener emplacement
   setTimeout(() => {
@@ -3778,6 +3853,29 @@ function refreshEditArticleDatalist(famVal) {
     opts = all.map(x => `<option value="${esc(x.art)}">${esc(x.fam)}</option>`);
   }
   dl.innerHTML = opts.join('');
+}
+
+// Rafraîchit le datalist global des marques (appelé à l'ouverture des modales)
+function refreshMarquesDatalist() {
+  let dl = document.getElementById('marquesList');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'marquesList';
+    document.body.appendChild(dl);
+  }
+  const marques = getMarquesList();
+  dl.innerHTML = marques.map(m => `<option value="${esc(m)}"></option>`).join('');
+}
+
+// Quand l'utilisateur change la marque, mettre à jour le datalist des modèles correspondants
+function onMarqueChange(prefix) {
+  const marqueEl = document.getElementById(prefix + '-marque');
+  const dlId = prefix + 'ModelesList';
+  const dl = document.getElementById(dlId);
+  if (!dl) return;
+  const marque = marqueEl ? marqueEl.value.trim() : '';
+  const modeles = getModelesList(marque);
+  dl.innerHTML = modeles.map(m => `<option value="${esc(m)}"></option>`).join('');
 }
 async function saveUpd(cbi) {
   const item = findItemByCbi(cbi);
@@ -3905,7 +4003,7 @@ async function updateInventoryRow(item) {
   await sPut(`Inventaire!B${idx + 2}:G${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '', item.prod || '']]);
 }
 function openAddItem(prefilledCode) {
-  const fams = Object.keys(FAMS).sort();
+  const fams = Object.keys(FAMS).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   if (!fams.length) { showToast("Chargez d'abord les données", 'warn'); return; }
   // Si un code est fourni, déterminer si c'est CBI ou CBE selon le préfixe
   const isCbe = prefilledCode && String(prefilledCode).startsWith('31');
@@ -3953,11 +4051,12 @@ function openAddItem(prefilledCode) {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Marque</label>
-          <input type="text" id="n-marque">
+          <input type="text" id="n-marque" list="marquesList" oninput="onMarqueChange('n')" autocomplete="off">
         </div>
         <div class="form-group">
           <label class="form-label">Modèle</label>
-          <input type="text" id="n-modele">
+          <input type="text" id="n-modele" list="nModelesList" autocomplete="off">
+          <datalist id="nModelesList"></datalist>
         </div>
       </div>
 
@@ -4017,6 +4116,8 @@ function openAddItem(prefilledCode) {
   window._N_ALL_ARTICLES = allArticles;
   // Au démarrage, pas de famille sélectionnée → tous les articles disponibles
   refreshArticleDatalist('');
+  refreshMarquesDatalist();
+  onMarqueChange('n');
 }
 
 // Gestion des photos en attente pour le nouvel article (avant qu'il ait un CBI)
@@ -4282,8 +4383,8 @@ async function updatePhotosInSheet(cbi) {
 
 // ---------- EXPORT, RESET, SUIVI, SCAN LIBRE ----------
 function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'danger'); return; } const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
-function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); }
-function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); }
+function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); logActivity('EXPORT', `Mises à jour (${rows.length} lignes)`); }
+function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); logActivity('EXPORT', `Base complète (${rows.length} lignes)`); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
 function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; const before = Object.keys(updates).length; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache();
     invalidateCbeIndex(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); logActivity('RESET', `${before} mises à jour supprimées`, 'local'); }
@@ -4316,9 +4417,9 @@ function getBureauLastInfo(site, bat, etage, bureau) {
 // Construction de la liste de TOUS les bureaux avec leurs stats
 function buildAllBureauData() {
   const data = [];
-  for (const site of Object.keys(HIER).sort()) {
-    for (const bat of Object.keys(HIER[site]).sort()) {
-      for (const etage of Object.keys(HIER[site][bat]).sort()) {
+  for (const site of Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
+    for (const bat of Object.keys(HIER[site]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
+      for (const etage of Object.keys(HIER[site][bat]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))) {
         for (const bureau of HIER[site][bat][etage]) {
           const stats = getStatsFor(site, bat, etage, bureau);
           const statut = getBureauStatut(site, bat, etage, bureau);
@@ -4341,7 +4442,7 @@ function openSuiviPanel() {
 
   window._suiviOpen = true;  // Pas de reset auto — UF est persistant
 
-  const sites = Object.keys(HIER).sort();
+  const sites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   const siteOpts = ['<option value="all">Tous les sites</option>']
     .concat(sites.map(s => `<option value="${esc(s)}" ${UF.suiviSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
     .join('');
@@ -4840,12 +4941,12 @@ async function saveEditLocation(btn) {
 // ---------- OPEN ADD LOCATION ----------
 function openAddLocation() {
   if (!can('canAddLocation')) { showToast('Accès refusé', 'danger'); return; }
-  const sites = Object.keys(HIER).sort();
+  const sites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Ajouter un emplacement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="form-group"><label class="form-label">Site *</label><select id="al-site" onchange="alSite()">${sites.map(s => `<option>${s}</option>`).join('')}<option value="__n">+ Nouveau site…</option></select><input type="text" id="al-site-n" placeholder="Nom du site" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bâtiment *</label><select id="al-bat" onchange="alBat()"><option value="">-- Choisir --</option></select><input type="text" id="al-bat-n" placeholder="Nom du bâtiment" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Étage *</label><select id="al-etage" onchange="alEtage()"><option value="">-- Choisir --</option></select><input type="text" id="al-etage-n" placeholder="Ex: RDC, ETAGE 1…" style="display:none;margin-top:8px"></div><div class="form-group"><label class="form-label">Bureau / Local *</label><select id="al-bureau" onchange="alBureau()"><option value="">-- Choisir --</option></select><input type="text" id="al-bureau-n" placeholder="Nom du bureau" style="display:none;margin-top:8px"></div><div class="form-row" style="margin-bottom:0"><div class="form-group"><label class="form-label">Code barre EMP</label><input type="text" id="al-cbe" placeholder="31000999" inputmode="text"></div><div class="form-group"><label class="form-label">Type</label><input type="text" id="al-type" placeholder="BUREAU, SALLE…"></div></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveLoc()"><i class="ti ti-map-pin"></i> Créer</button></div></div>`);
   alSite();
 }
-function alSite() { const v = document.getElementById('al-site').value; document.getElementById('al-site-n').style.display = v === '__n' ? 'block' : 'none'; const bb = document.getElementById('al-bat'); bb.innerHTML = '<option value="">-- Choisir --</option>'; if (v && v !== '__n' && HIER[v]) Object.keys(HIER[v]).sort().forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`); bb.innerHTML += '<option value="__n">+ Nouveau bâtiment…</option>'; alBat(); }
-function alBat() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value; document.getElementById('al-bat-n').style.display = bat === '__n' ? 'block' : 'none'; const ee = document.getElementById('al-etage'); ee.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort().forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`); ee.innerHTML += '<option value="__n">+ Nouvel étage…</option>'; alEtage(); }
+function alSite() { const v = document.getElementById('al-site').value; document.getElementById('al-site-n').style.display = v === '__n' ? 'block' : 'none'; const bb = document.getElementById('al-bat'); bb.innerHTML = '<option value="">-- Choisir --</option>'; if (v && v !== '__n' && HIER[v]) Object.keys(HIER[v]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(b => bb.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`); bb.innerHTML += '<option value="__n">+ Nouveau bâtiment…</option>'; alBat(); }
+function alBat() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value; document.getElementById('al-bat-n').style.display = bat === '__n' ? 'block' : 'none'; const ee = document.getElementById('al-etage'); ee.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && HIER[site] && HIER[site][bat]) Object.keys(HIER[site][bat]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })).forEach(e => ee.innerHTML += `<option value="${esc(e)}">${esc(e)}</option>`); ee.innerHTML += '<option value="__n">+ Nouvel étage…</option>'; alEtage(); }
 function alEtage() { const site = document.getElementById('al-site').value, bat = document.getElementById('al-bat').value, etage = document.getElementById('al-etage').value; document.getElementById('al-etage-n').style.display = etage === '__n' ? 'block' : 'none'; const bu = document.getElementById('al-bureau'); bu.innerHTML = '<option value="">-- Choisir --</option>'; if (site && site !== '__n' && bat && bat !== '__n' && etage && etage !== '__n' && HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(b => bu.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`); bu.innerHTML += '<option value="__n">+ Nouveau bureau…</option>'; document.getElementById('al-bureau-n').style.display = 'none'; }
 function alBureau() { document.getElementById('al-bureau-n').style.display = document.getElementById('al-bureau').value === '__n' ? 'block' : 'none'; }
 async function saveLoc() {
