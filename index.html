@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.6 -->
+<!-- VERSION 11.7 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -553,8 +553,13 @@ const ER = ['BON','MOYEN','VETUSTE'];
 // Grille des critères pour aider à choisir l'état de renouvelabilité
 const CRITERES_ETAT = {
   VETUSTE: [
-    'Usure visible : cassure, fissure, détachement, gonflement, couleurs non homogènes (partiel ou général)',
-    'Manque de stabilité : boitement, problème de fixation',
+    'Cassure',
+    'Fissure',
+    'Détachement',
+    'Gonflement',
+    'Couleurs non homogènes (partiel ou général)',
+    'Boitement',
+    'Problème de fixation',
     'Surface à plusieurs éraflures',
     'Surface à plusieurs inscriptions écrites',
     'Déchirures',
@@ -667,7 +672,21 @@ function extractCriteresFromObs(obs) {
   const lines = obs.split('\n');
   for (const line of lines) {
     if (line.startsWith('État observé:')) {
-      return line.substring('État observé:'.length).split(';').map(s => s.trim()).filter(Boolean);
+      const raw = line.substring('État observé:'.length).split(';').map(s => s.trim()).filter(Boolean);
+      // Migration des anciens critères combinés vers les nouveaux séparés
+      const migrated = [];
+      const oldToNew = {
+        'Usure visible : cassure, fissure, détachement, gonflement, couleurs non homogènes (partiel ou général)': ['Cassure', 'Fissure', 'Détachement', 'Gonflement', 'Couleurs non homogènes (partiel ou général)'],
+        'Manque de stabilité : boitement, problème de fixation': ['Boitement', 'Problème de fixation']
+      };
+      for (const item of raw) {
+        if (oldToNew[item]) {
+          for (const m of oldToNew[item]) if (!migrated.includes(m)) migrated.push(m);
+        } else {
+          if (!migrated.includes(item)) migrated.push(item);
+        }
+      }
+      return migrated;
     }
   }
   return [];
