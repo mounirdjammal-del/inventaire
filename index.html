@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.7 -->
+<!-- VERSION 11.8 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -742,10 +742,42 @@ function closeModal() {
 }
 
 function saveLocal() {
-  try { localStorage.setItem(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, t: Date.now() })); } catch(e) {}
+  try {
+    localStorage.setItem(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, pw: pendingWrites, t: Date.now() }));
+  } catch(e) {}
 }
 function loadLocal() {
-  try { const d = JSON.parse(localStorage.getItem(SK) || '{}'); updates = d.u || {}; newItems = d.ni || []; newLocs = d.nl || []; siteStatuts = d.ss || {}; } catch(e) {}
+  try {
+    const d = JSON.parse(localStorage.getItem(SK) || '{}');
+    updates = d.u || {};
+    newItems = d.ni || [];
+    newLocs = d.nl || [];
+    siteStatuts = d.ss || {};
+    pendingWrites = d.pw || [];  // Restaurer la file d'attente d'écritures hors-ligne
+  } catch(e) {}
+}
+// Persistance de la DB complète + référentiels (pour consultation hors-ligne après fermeture)
+function saveDBCache() {
+  try {
+    localStorage.setItem('inv_db_cache', JSON.stringify({
+      db: DB,
+      rel_sites: REL_SITES, rel_bats: REL_BATS, rel_emps: REL_EMPS,
+      rel_fams: REL_FAMS, rel_arts: REL_ARTS,
+      t: Date.now()
+    }));
+  } catch(e) { console.warn('DB cache non sauvegardé (quota?)', e); }
+}
+function loadDBCache() {
+  try {
+    const d = JSON.parse(localStorage.getItem('inv_db_cache') || '{}');
+    if (d.db && d.db.length) {
+      DB = d.db;
+      REL_SITES = d.rel_sites || {}; REL_BATS = d.rel_bats || {}; REL_EMPS = d.rel_emps || {};
+      REL_FAMS = d.rel_fams || {}; REL_ARTS = d.rel_arts || {};
+      return d.t || 0;  // timestamp du cache
+    }
+  } catch(e) {}
+  return 0;
 }
 function loadPhotos() {
   try { photos = JSON.parse(localStorage.getItem('inv_photos') || '{}'); } catch(e) { photos = {}; }
@@ -875,16 +907,21 @@ function renderPendingIndicator() {
   const el = document.getElementById('pending-indicator');
   if (!el) return;
   const n = pendingWrites.length;
-  if (n === 0) { el.style.display = 'none'; return; }
-  const offline = !gTok;
-  const cls = offline ? 'offline' : 'pending';
-  const icon = offline ? 'ti-cloud-off' : 'ti-cloud-upload';
-  const label = offline ? `${n} hors-ligne` : `${n} en attente`;
+  const offline = !navigator.onLine;
+  // Si hors-ligne, toujours afficher l'indicateur (même sans écritures en attente)
+  if (n === 0 && !offline) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.className = 'sync-indicator ' + cls;
-  el.title = `${n} écriture(s) en attente de synchronisation${offline ? ' (hors-ligne)' : ''} — cliquez pour forcer`;
-  el.innerHTML = `<i class="ti ${icon}"></i>${label}`;
-  el.onclick = () => { if (gTok && !isSyncing) syncNow(); };
+  if (offline) {
+    el.className = 'sync-indicator offline';
+    el.title = n ? `Hors-ligne — ${n} modification(s) en attente. Synchronisation auto au retour de connexion.` : 'Mode hors-ligne — consultation et saisie disponibles, sync au retour.';
+    el.innerHTML = `<i class="ti ti-cloud-off"></i>${n ? n + ' hors-ligne' : 'Hors-ligne'}`;
+    el.onclick = () => showToast(n ? `${n} modification(s) en attente — se synchroniseront automatiquement au retour de connexion` : 'Mode hors-ligne actif', 'info');
+  } else if (n > 0) {
+    el.className = 'sync-indicator pending';
+    el.title = `${n} écriture(s) en attente — cliquez pour forcer la synchronisation`;
+    el.innerHTML = `<i class="ti ti-cloud-upload"></i>${n} en attente`;
+    el.onclick = () => { if (gTok && !isSyncing) syncNow(); };
+  }
 }
 function disconnectGoogle() {
   gTok = null; gTokExpiry = 0;
@@ -1260,6 +1297,7 @@ async function pullAll() {
     invalidateStatsCache();
     saveLocal();
     savePhotos();  // Persister les photos partagées entre opérateurs
+    saveDBCache(); // Persister la DB complète pour consultation hors-ligne
   } catch(e) {
     console.error('pullAll error', e);
   }
@@ -1337,7 +1375,8 @@ async function writeUpd(cbi, u) {
   const obsClean = (u.obs || '').split('\n').filter(l => !l.startsWith('État observé:')).join('\n').trim();
   // Récupérer les URLs photos depuis le cache local
   const photoLinks = (photos[cbi] || []).map(p => p.viewUrl).filter(Boolean).join('\n');
-  if (!gTok) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); renderPendingIndicator(); return; }
+  // Hors-ligne ou pas de token : mettre en file d'attente persistante
+  if (!gTok || !navigator.onLine) { pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } }); saveLocal(); renderPendingIndicator(); return; }
   try {
     // Utiliser le cache UPDATES_INDEX (CBI → numéro de ligne) pour éviter le sGet répété
     let idx = await getUpdateRowIndex(cbi);
@@ -1374,15 +1413,17 @@ async function writeUpd(cbi, u) {
     UPDATES_PHOTOS_CACHE[cbi] = finalPhotos;
   } catch(e) {
     pendingWrites.push({ type: 'u', d: { cbi, emp_id, item, ...u } });
+    saveLocal();
     renderPendingIndicator();
   }
 }
 async function writeNI(item) {
-  if (!gTok) { pendingWrites.push({ type: 'ni', d: item }); renderPendingIndicator(); return; }
+  if (!gTok || !navigator.onLine) { pendingWrites.push({ type: 'ni', d: item }); saveLocal(); renderPendingIndicator(); return; }
   try {
     await sAppend('NouveauxArticles', [[item.cbi, item.cbe || '', item.emp_id || '', item.article_id || '', item.marque || '', item.modele || '', item.serie || '', item.qty, item.serv, item.renouv, item.obs || '', item._addedBy, new Date(item._addedAt).toISOString()]]);
   } catch(e) {
     pendingWrites.push({ type: 'ni', d: item });
+    saveLocal();
     renderPendingIndicator();
   }
 }
@@ -1426,6 +1467,9 @@ const DEFAULT_FILTERS = {
   refArtFilt: '',                  // Articles ref : famille
   refArtSearch: '',                // Articles ref : recherche
   locSearch: '',                   // Emplacements : recherche
+  locSiteFilter: 'all',            // Emplacements : filtre site
+  locBatFilter: 'all',             // Emplacements : filtre bâtiment
+  locEtageFilter: 'all',           // Emplacements : filtre étage
   inventoryFilter: 'all',          // Inventaire : filtre table (Tous/Inv/Non/Trouvés/Non trouvés)
   activityFilter: 'all',
   activityUserFilter: 'all'
@@ -1745,30 +1789,74 @@ async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
+  let done = 0;
   try {
-    if (upd.length) await sAppend('Updates', upd.map(p => {
+    // Mises à jour : utiliser writeUpd (upsert + 20 colonnes A:T) pour chaque CBI
+    for (const p of upd) {
       const u = p.d;
-      const it = u.item || {};
-      return [u.cbi, u.emp_id || '', it.cbe || '', it.site || '', it.bat || '', it.etage || '', it.bureau || '', it.art || '', u.serv, u.renouv, u.obs || '', u.trouve || '', '', u.by, new Date(u.ts).toISOString()];
-    }));
-    if (ni.length) await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+      // Reconstituer l'objet update et écrire via writeUpd (gère upsert, critères col P, Q/R/S/T)
+      const updateObj = { serv: u.serv, renouv: u.renouv, obs: u.obs || '', trouve: u.trouve || '', by: u.by, ts: u.ts };
+      await writeUpd(u.cbi, updateObj);
+      done++;
+    }
+    // Nouveaux articles
+    if (ni.length) {
+      await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
+      done += ni.length;
+    }
     pendingWrites = [];
+    saveLocal();
     renderPendingIndicator();
-    if (upd.length + ni.length > 0) showToast(`${upd.length + ni.length} écriture(s) synchronisée(s)`, 'success');
+    if (done > 0) showToast(`${done} écriture(s) synchronisée(s)`, 'success');
   } catch(e) {
     console.error('pushPending error', e);
-    showToast('Erreur de sync — réessai automatique', 'warn');
+    // Retirer ce qui a été traité, garder le reste
+    if (done > 0) {
+      pendingWrites = pendingWrites.slice(done);
+      saveLocal();
+      renderPendingIndicator();
+    }
+    showToast('Sync partielle — réessai automatique au retour', 'warn');
   }
 }
 
 async function loadFromSheets() {
   if (!gTok || !gsConf.sheetId) return;
   const main = document.getElementById('main');
+
+  // 1. Charger d'abord le cache local pour affichage immédiat (même hors-ligne)
+  const cacheTime = loadDBCache();
+  if (DB.length) {
+    buildHier();
+    invalidateAllItemsCache();
+    invalidateCbeIndex();
+    invalidateStatsCache();
+    renderDataStatus();
+    renderMain();
+  }
+
+  // 2. Si hors-ligne, s'arrêter là (on a déjà affiché le cache)
+  if (!navigator.onLine) {
+    if (DB.length) {
+      const ageMin = cacheTime ? Math.round((Date.now() - cacheTime) / 60000) : 0;
+      showToast(`Mode hors-ligne — données en cache${ageMin ? ` (il y a ${ageMin} min)` : ''}`, 'warn');
+      startAutoSync();
+      goView('inventory');
+    } else {
+      if (main) main.innerHTML = '<div class="empty"><i class="ti ti-wifi-off" style="font-size:48px;color:var(--warn-txt)"></i><div style="margin-top:12px">Hors-ligne et aucune donnée en cache.<br>Connectez-vous à internet pour le premier chargement.</div></div>';
+      showToast('Hors-ligne — aucune donnée en cache disponible', 'danger');
+    }
+    return;
+  }
+
+  // 3. En ligne : charger les données fraîches
   if (main && !DB.length) main.innerHTML = '<div class="empty"><div class="spinner" style="width:40px;height:40px;border-width:3px;margin:0 auto 20px"></div><div>Chargement des données…</div></div>';
   setSyncing(true, 'Chargement…');
   const wasEmpty = !DB.length;
   try {
     await ensureSheets();
+    // Pousser d'abord les écritures en attente (faites hors-ligne) avant de recharger
+    if (pendingWrites.length) await pushPending();
     await pullAll();
     renderDataStatus();
     renderMain();
@@ -1776,7 +1864,17 @@ async function loadFromSheets() {
     startAutoSync();
     // Ne forcer la vue inventaire qu'au PREMIER chargement
     if (wasEmpty) goView('inventory');
-  } catch(err) { showToast('Erreur: ' + err.message, 'danger'); console.error(err); }
+  } catch(err) {
+    // En cas d'échec réseau, retomber sur le cache si disponible
+    if (DB.length) {
+      showToast('Connexion instable — données en cache affichées', 'warn');
+      startAutoSync();
+      if (wasEmpty) goView('inventory');
+    } else {
+      showToast('Erreur: ' + err.message, 'danger');
+    }
+    console.error(err);
+  }
   setSyncing(false);
 }
 async function syncNow() {
@@ -2362,8 +2460,31 @@ function renderTable() {
 // ---------- LOCATIONS VIEW ----------
 function renderLocationsView() {
   const main = document.getElementById('main');
-  const sites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-  if (!sites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
+  const allSites = Object.keys(HIER).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  if (!allSites.length) { main.innerHTML = '<div class="empty"><i class="ti ti-map-pin"></i><div>Aucun emplacement chargé</div></div>'; return; }
+
+  // Options des dropdowns en cascade
+  const siteOpts = ['<option value="all">Tous les sites</option>']
+    .concat(allSites.map(s => `<option value="${esc(s)}" ${UF.locSiteFilter === s ? 'selected' : ''}>${esc(s)}</option>`))
+    .join('');
+  let batsAvailable = [];
+  if (UF.locSiteFilter !== 'all' && HIER[UF.locSiteFilter]) {
+    batsAvailable = Object.keys(HIER[UF.locSiteFilter]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+  const batOpts = ['<option value="all">Tous les bâtiments</option>']
+    .concat(batsAvailable.map(b => `<option value="${esc(b)}" ${UF.locBatFilter === b ? 'selected' : ''}>${esc(b)}</option>`))
+    .join('');
+  let etagesAvailable = [];
+  if (UF.locSiteFilter !== 'all' && UF.locBatFilter !== 'all' && HIER[UF.locSiteFilter] && HIER[UF.locSiteFilter][UF.locBatFilter]) {
+    etagesAvailable = Object.keys(HIER[UF.locSiteFilter][UF.locBatFilter]).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+  const etageOpts = ['<option value="all">Tous les étages</option>']
+    .concat(etagesAvailable.map(e => `<option value="${esc(e)}" ${UF.locEtageFilter === e ? 'selected' : ''}>${esc(e)}</option>`))
+    .join('');
+
+  // Filtrer les sites selon le filtre site sélectionné
+  const sites = UF.locSiteFilter !== 'all' ? allSites.filter(s => s === UF.locSiteFilter) : allSites;
+
   let html = `
     <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div style="font-size:18px;font-weight:700">Emplacements</div>
@@ -2377,6 +2498,22 @@ function renderLocationsView() {
       <span class="scan-hint">↵</span>
     </label>
 
+    <!-- Filtres hiérarchiques en cascade -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Site</label>
+        <select onchange="setLocSiteFilter(this.value)" style="width:100%">${siteOpts}</select>
+      </div>
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Bâtiment</label>
+        <select onchange="setLocBatFilter(this.value)" style="width:100%" ${UF.locSiteFilter === 'all' ? 'disabled' : ''}>${batOpts}</select>
+      </div>
+      <div>
+        <label class="form-label txt-xs" style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block">Étage</label>
+        <select onchange="setLocEtageFilter(this.value)" style="width:100%" ${UF.locBatFilter === 'all' ? 'disabled' : ''}>${etageOpts}</select>
+      </div>
+    </div>
+
     <!-- Recherche texte -->
     <div class="search-row" style="margin-bottom:14px">
       <input type="text" id="loc-search-text" placeholder="Rechercher un bureau, étage, bâtiment…" value="${esc(UF.locSearch)}" oninput="setFilter('locSearch',this.value);debounceLocSearch()" style="margin:0;flex:1">
@@ -2389,7 +2526,8 @@ function renderLocationsView() {
     <!-- Liste des sites -->
     <div id="loc-sites-list">
   `;
-  // Rendu niveau 1 : sites seulement (pas de contenu enfant)
+  // Rendu niveau 1 : sites seulement (pas de contenu enfant) — sauf si auto-expand par filtre
+  const autoExpand = UF.locSiteFilter !== 'all';
   sites.forEach(site => {
     const stats = getStatsFor(site, null, null, null);
     const st = siteStatuts[site] || { statut: 'NON OUVERT' };
@@ -2412,6 +2550,22 @@ function renderLocationsView() {
   });
   html += `</div>`;
   main.innerHTML = html;
+  // Auto-déplier le site si un filtre site est actif
+  if (UF.locSiteFilter !== 'all') {
+    requestAnimationFrame(() => {
+      const cards = main.querySelectorAll('.loc-site-card');
+      cards.forEach(card => {
+        const content = card.querySelector('.loc-site-content');
+        const chevron = card.querySelector('.ti-chevron-down');
+        if (content && !content.dataset.loaded) {
+          content.dataset.loaded = '1';
+          content.style.display = 'block';
+          if (chevron) chevron.style.transform = 'rotate(180deg)';
+          renderLocSiteContent(content, UF.locSiteFilter);
+        }
+      });
+    });
+  }
   // Restaurer la recherche persistée
   if (UF.locSearch && UF.locSearch.trim().length >= 2) {
     requestAnimationFrame(() => performLocTextSearch());
@@ -2665,21 +2819,30 @@ function toggleLocSite(card, site) {
   }
 }
 function renderLocSiteContent(container, site) {
-  const bats = Object.keys(HIER[site] || {}).sort();
+  let bats = Object.keys(HIER[site] || {}).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  // Appliquer le filtre bâtiment si actif et qu'on est sur le site filtré
+  if (UF.locSiteFilter === site && UF.locBatFilter !== 'all') {
+    bats = bats.filter(b => b === UF.locBatFilter);
+  }
   let html = '';
   bats.forEach(bat => {
-    const etages = Object.keys((HIER[site] || {})[bat] || {}).sort();
+    let etages = Object.keys((HIER[site] || {})[bat] || {}).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+    // Appliquer le filtre étage si actif
+    if (UF.locSiteFilter === site && UF.locBatFilter === bat && UF.locEtageFilter !== 'all') {
+      etages = etages.filter(e => e === UF.locEtageFilter);
+    }
     const batStats = getStatsFor(site, bat, null, null);
+    const batExpanded = (UF.locSiteFilter === site && UF.locBatFilter === bat);
     html += `<div style="padding:10px 14px 10px 36px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
         <div style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600" onclick="toggleLocBat(this)">
           <i class="ti ti-door" class="txt-sm-muted"></i>${bat}
           <span style="font-size:11px;color:var(--text3);font-weight:500">· ${batStats.total} art. · ${batStats.pct}%</span>
-          <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s"></i>
+          <i class="ti ti-chevron-down" style="font-size:12px;color:var(--text3);margin-left:auto;transition:transform .2s${batExpanded ? ';transform:rotate(180deg)' : ''}"></i>
         </div>
         <button class="btn btn-sm" style="min-height:28px;padding:0 6px;box-shadow:none;border:none" onclick="openEditLocation('${site}','${bat}','','')" title="Modifier ce bâtiment"><i class="ti ti-edit" class="txt-sm-muted"></i></button>
       </div>
-      <div class="loc-bat-content" style="display:none">`;
+      <div class="loc-bat-content" style="display:${batExpanded ? 'block' : 'none'}">`;
     etages.forEach(etage => {
       const bureaux = ((HIER[site] || {})[bat] || {})[etage] || [];
       const etgStats = getStatsFor(site, bat, etage, null);
@@ -3022,6 +3185,23 @@ function setDashBatFilter(b) {
 function setDashEtageFilter(e) {
   setFilter('dashEtageFilter', e);
   renderDashboardList();
+}
+
+// Filtres en cascade pour la vue Emplacements
+function setLocSiteFilter(s) {
+  setFilter('locSiteFilter', s);
+  setFilter('locBatFilter', 'all');
+  setFilter('locEtageFilter', 'all');
+  renderLocationsView();
+}
+function setLocBatFilter(b) {
+  setFilter('locBatFilter', b);
+  setFilter('locEtageFilter', 'all');
+  renderLocationsView();
+}
+function setLocEtageFilter(e) {
+  setFilter('locEtageFilter', e);
+  renderLocationsView();
 }
 
 // Statut d'un bureau d'après son avancement
@@ -4027,7 +4207,9 @@ function openAddItem(prefilledCode) {
   // Si un code est fourni, déterminer si c'est CBI ou CBE selon le préfixe
   const isCbe = prefilledCode && String(prefilledCode).startsWith('31');
   const cbiVal = prefilledCode && !isCbe ? prefilledCode : '';
-  const cbeVal = prefilledCode && isCbe ? prefilledCode : '';
+  // Pré-remplir le CBE : code scanné si c'en est un, sinon le CBE de l'emplacement actuel
+  const currentLocCbe = curLoc.bureau ? getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau) : '';
+  const cbeVal = (prefilledCode && isCbe) ? prefilledCode : (currentLocCbe || '');
 
   // Liste complète de tous les articles (pour recherche cross-familles)
   const allArticles = [];
@@ -4355,6 +4537,7 @@ async function handlePhotoCapture(event, cbi) {
   const files = [...event.target.files];
   if (!files.length) return;
   if (!gTok) { showToast('Connectez Google Sheets pour uploader les photos', 'warn'); return; }
+  if (!navigator.onLine) { showToast('Photos indisponibles hors-ligne — reconnectez-vous pour les ajouter (la saisie texte reste possible)', 'warn'); event.target.value = ''; return; }
   showToast(`Upload de ${files.length} photo(s)…`, 'info');
   try {
     if (!photos[cbi]) photos[cbi] = [];
@@ -5041,6 +5224,8 @@ function showAppShell() {
 function init() {
   loadLocal();
   loadPhotos();
+  // Afficher immédiatement l'état de la file d'attente (écritures hors-ligne en attente)
+  setTimeout(renderPendingIndicator, 100);
 
   // ── Écouter les changements de connectivité réseau ──
   window.addEventListener('online', () => {
