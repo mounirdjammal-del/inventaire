@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.3 -->
+<!-- VERSION 11.4 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -2391,26 +2391,137 @@ function debounceLocSearch() {
 
 function performLocTextSearch() {
   const q = (UF.locSearch || '').trim().toLowerCase();
+  const el = document.getElementById('loc-search-results');
+  const listEl = document.getElementById('loc-sites-list');
+  if (!el) return;
   if (!q || q.length < 2) {
-    document.getElementById('loc-search-results').style.display = 'none';
-    document.getElementById('loc-sites-list').style.display = '';
+    el.style.display = 'none';
+    if (listEl) listEl.style.display = '';
     return;
   }
-  // Construire tous les emplacements et filtrer
-  const matches = [];
+  // Cacher la liste normale et afficher les résultats
+  if (listEl) listEl.style.display = 'none';
+  el.style.display = '';
+
+  // Collecter les matches à tous les niveaux (sites, bâtiments, étages, bureaux)
+  const matchedSites = new Set();
+  const matchedBats = []; // {site, bat}
+  const matchedEtages = []; // {site, bat, etage}
+  const matchedBureaux = []; // {site, bat, etage, bureau}
+
   for (const site in HIER) {
+    const siteL = site.toLowerCase();
+    const siteMatch = siteL.includes(q);
+    if (siteMatch) matchedSites.add(site);
+
     for (const bat in HIER[site]) {
+      const batL = bat.toLowerCase();
+      const batMatch = batL.includes(q);
+      if (batMatch) matchedBats.push({ site, bat });
+
       for (const etage in HIER[site][bat]) {
+        const etageL = etage.toLowerCase();
+        const etageMatch = etageL.includes(q);
+        if (etageMatch) matchedEtages.push({ site, bat, etage });
+
         for (const bureau of HIER[site][bat][etage]) {
-          const blob = (site + ' ' + bat + ' ' + etage + ' ' + bureau).toLowerCase();
-          if (blob.includes(q)) {
-            matches.push({ site, bat, etage, bureau });
+          const bureauL = bureau.toLowerCase();
+          if (bureauL.includes(q)) {
+            matchedBureaux.push({ site, bat, etage, bureau });
           }
         }
       }
     }
   }
-  showLocSearchResult(matches.slice(0, 30), q, matches.length);
+
+  const totalMatches = matchedSites.size + matchedBats.length + matchedEtages.length + matchedBureaux.length;
+  if (totalMatches === 0) {
+    el.innerHTML = '<div class="alert alert-warn"><i class="ti ti-alert-circle"></i>Aucun résultat pour "' + esc(q) + '"</div>';
+    return;
+  }
+
+  let html = `<div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:600">${totalMatches} résultat${totalMatches > 1 ? 's' : ''} pour "${esc(q)}"</div>`;
+
+  // SECTION SITES
+  if (matchedSites.size > 0) {
+    html += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700;margin:14px 0 6px"><i class="ti ti-building-skyscraper"></i> Sites (${matchedSites.size})</div>`;
+    for (const site of [...matchedSites].sort()) {
+      const stats = getStatsFor(site, null, null, null);
+      const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+      html += `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:6px">
+        <i class="ti ti-building-skyscraper" style="color:var(--accent)"></i>
+        <div style="flex:1"><strong>${esc(site)}</strong></div>
+        <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
+        <span class="txt-xs">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" onclick="openEditLocation('${esc(site)}','','','')" title="Modifier"><i class="ti ti-edit"></i></button>
+      </div>`;
+    }
+  }
+
+  // SECTION BÂTIMENTS
+  if (matchedBats.length > 0) {
+    html += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700;margin:14px 0 6px"><i class="ti ti-building"></i> Bâtiments (${matchedBats.length})</div>`;
+    for (const m of matchedBats.slice(0, 30)) {
+      const stats = getStatsFor(m.site, m.bat, null, null);
+      const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+      html += `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:6px">
+        <i class="ti ti-building" style="color:var(--accent)"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${esc(m.bat)}</div>
+          <div class="txt-xs">${esc(m.site)}</div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
+        <span class="txt-xs">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" onclick="openEditLocation('${esc(m.site)}','${esc(m.bat)}','','')" title="Modifier"><i class="ti ti-edit"></i></button>
+      </div>`;
+    }
+    if (matchedBats.length > 30) html += `<div class="txt-xs" style="text-align:center;padding:6px">+${matchedBats.length - 30} autres bâtiments…</div>`;
+  }
+
+  // SECTION ÉTAGES
+  if (matchedEtages.length > 0) {
+    html += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700;margin:14px 0 6px"><i class="ti ti-stairs"></i> Étages (${matchedEtages.length})</div>`;
+    for (const m of matchedEtages.slice(0, 30)) {
+      const stats = getStatsFor(m.site, m.bat, m.etage, null);
+      const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+      html += `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:6px">
+        <i class="ti ti-stairs" style="color:var(--accent)"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${esc(m.etage)}</div>
+          <div class="txt-xs">${esc(m.site)} › ${esc(m.bat)}</div>
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
+        <span class="txt-xs">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" onclick="openEditLocation('${esc(m.site)}','${esc(m.bat)}','${esc(m.etage)}','')" title="Modifier"><i class="ti ti-edit"></i></button>
+      </div>`;
+    }
+    if (matchedEtages.length > 30) html += `<div class="txt-xs" style="text-align:center;padding:6px">+${matchedEtages.length - 30} autres étages…</div>`;
+  }
+
+  // SECTION BUREAUX
+  if (matchedBureaux.length > 0) {
+    html += `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700;margin:14px 0 6px"><i class="ti ti-door"></i> Bureaux (${matchedBureaux.length})</div>`;
+    for (const r of matchedBureaux.slice(0, 50)) {
+      const stats = getStatsFor(r.site, r.bat, r.etage, r.bureau);
+      const pctColor = stats.pct === 100 ? 'var(--success-txt)' : stats.pct > 0 ? 'var(--warn-txt)' : 'var(--text3)';
+      const cbe = getCbeFromLoc(r.site, r.bat, r.etage, r.bureau);
+      html += `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:6px">
+        <i class="ti ti-door" style="color:var(--accent)"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${esc(r.bureau)}</div>
+          <div class="txt-xs">${esc(r.site)} › ${esc(r.bat)} › ${esc(r.etage)}</div>
+          ${cbe ? `<div style="font-family:monospace;font-size:10px;color:var(--accent);font-weight:600;margin-top:2px"><i class="ti ti-barcode" style="font-size:10px"></i> ${esc(cbe)}</div>` : ''}
+        </div>
+        <span style="font-size:13px;font-weight:700;color:${pctColor}">${stats.pct}%</span>
+        <span class="txt-xs">${stats.inv}/${stats.total}</span>
+        <button class="btn btn-sm" data-site="${esc(r.site)}" data-bat="${esc(r.bat)}" data-etage="${esc(r.etage)}" data-bureau="${esc(r.bureau)}" onclick="goToInventory(this)" title="Inventaire"><i class="ti ti-clipboard-check"></i></button>
+        <button class="btn btn-sm" onclick="openEditLocation('${esc(r.site)}','${esc(r.bat)}','${esc(r.etage)}','${esc(r.bureau)}')" title="Modifier"><i class="ti ti-edit"></i></button>
+      </div>`;
+    }
+    if (matchedBureaux.length > 50) html += `<div class="txt-xs" style="text-align:center;padding:6px">+${matchedBureaux.length - 50} autres bureaux…</div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 function showLocSearchResult(results, query, totalCount) {
