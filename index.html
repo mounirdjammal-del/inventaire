@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 11.9 -->
+<!-- VERSION 12.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -540,8 +540,8 @@ const ROLES = {
 };
 const DEFAULT_ROLE = 'user';
 const PERMISSIONS = {
-  admin: { canExport: true, canReset: true, canSuivi: true, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: true },
-  user:  { canExport: false, canReset: false, canSuivi: false, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: false },
+  admin: { canExport: true, canReset: true, canSuivi: true, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: true, canDelete: true },
+  user:  { canExport: false, canReset: false, canSuivi: false, canAddLocation: true, canEditLocation: true, canAddItem: true, canEditItem: true, canManageRoles: false, canDelete: false },
 };
 let currentRole = 'user';
 function getRole(email) { return email ? (ROLES[email.toLowerCase()] || DEFAULT_ROLE) : DEFAULT_ROLE; }
@@ -694,7 +694,7 @@ function extractCriteresFromObs(obs) {
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
 const SH_EXPORT = 'ExportFinal';
 const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
-const H_EXPORT = ['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT INVENTAIRE','NOUVEAU ARTICLE','PHOTOS'];
+const H_EXPORT = ['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','CRITERES ETAT','OBSERVATION','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','N° AMENDIS','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT','PHOTOS'];
 const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
 
 let driveFolderId = null;
@@ -1441,6 +1441,23 @@ function getCbeFromLoc(site, bat, etage, bureau) {
 }
 function invalidateCbeIndex() { _EMP_CBE_INDEX = null; }
 
+// Vérifie si un CBE est déjà utilisé par un AUTRE emplacement (exclut emp_id donné)
+// Retourne l'emplacement en conflit, ou null si le CBE est libre
+function findCbeConflict(cbe, excludeEmpId) {
+  if (!cbe || !cbe.trim()) return null;
+  const v = cbe.trim();
+  for (const eid in REL_EMPS) {
+    if (eid === excludeEmpId) continue;
+    if ((REL_EMPS[eid].cbe || '').trim() === v) {
+      const e = REL_EMPS[eid];
+      const site = (REL_SITES[e.site_id] || {}).site_code || '';
+      const bat = (REL_BATS[e.bat_id] || {}).bat_nom || '';
+      return { emp_id: eid, site, bat, etage: e.etage, bureau: e.bureau };
+    }
+  }
+  return null;
+}
+
 // Helper : retourne l'index de ligne (0-based) du CBI dans la feuille Updates
 // Utilise le cache UPDATES_INDEX (construit par pullAll), sinon fallback sGet
 async function getUpdateRowIndex(cbi) {
@@ -1810,6 +1827,7 @@ function renderActivityList() {
       'INVENTORY': ['INVENTORY', 'TRANSFER'],
       'ADD': ['ADD_ITEM', 'ADD_LOCATION', 'ADD_REF_ARTICLE', 'ADD_FAMILLE'],
       'EDIT': ['EDIT_LOCATION', 'EDIT_ITEM'],
+      'DELETE': ['DELETE_LOCATION', 'DELETE_REF_ARTICLE'],
       'EXPORT': ['EXPORT', 'EXPORT_FINAL'],
       'RESET': ['RESET']
     };
@@ -1844,6 +1862,8 @@ function renderActivityList() {
     'ADD_FAMILLE': { icon: 'ti-folder-plus', color: 'var(--accent)', label: 'Nouvelle famille' },
     'EDIT_LOCATION': { icon: 'ti-edit', color: 'var(--warn-txt)', label: 'Modification emplacement' },
     'EDIT_ITEM': { icon: 'ti-edit', color: 'var(--warn-txt)', label: 'Modification article' },
+    'DELETE_LOCATION': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Suppression emplacement' },
+    'DELETE_REF_ARTICLE': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Suppression article' },
     'EXPORT': { icon: 'ti-file-export', color: 'var(--accent)', label: 'Export' },
     'EXPORT_FINAL': { icon: 'ti-table-export', color: 'var(--accent)', label: 'Export final' },
     'RESET': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Réinitialisation' }
@@ -3255,8 +3275,62 @@ function filterRefArticles() {
         <div style="font-size:14px;font-weight:700;color:${a.usage > 0 ? 'var(--accent)' : 'var(--text3)'}">${a.usage.toLocaleString('fr-FR')}</div>
         <div class="txt-xs">${a.usage > 1 ? 'biens' : 'bien'}</div>
       </div>
+      ${can('canDelete') ? `<button class="btn btn-sm" style="min-height:30px;padding:0 8px;box-shadow:none;color:${a.usage > 0 ? 'var(--text3)' : 'var(--danger-txt)'}" data-aid="${esc(a.article_id)}" data-anom="${esc(a.article_nom)}" data-usage="${a.usage}" onclick="confirmDeleteRefArticle(this)" title="${a.usage > 0 ? 'Suppression impossible (biens rattachés)' : 'Supprimer cet article'}"><i class="ti ti-trash"></i></button>` : ''}
     </div>
   `).join('') + (total > shown.length ? `<div style="text-align:center;padding:12px"><button class="btn btn-sm" onclick="showMoreRefArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : '');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SUPPRESSION D'ARTICLE RÉFÉRENTIEL (admin uniquement)
+// ─────────────────────────────────────────────────────────────
+function confirmDeleteRefArticle(btn) {
+  if (!can('canDelete')) { showToast('Accès refusé — administrateur uniquement', 'danger'); return; }
+  const aid = btn.dataset.aid;
+  const anom = btn.dataset.anom;
+  const usage = parseInt(btn.dataset.usage) || 0;
+  if (usage > 0) {
+    showToast(`Impossible de supprimer "${anom}" : ${usage} bien(s) physique(s) rattaché(s).`, 'danger');
+    return;
+  }
+  if (!confirm(`Supprimer l'article référentiel "${anom}" ?\n\nCette action est irréversible. Aucun bien physique n'y est rattaché.`)) return;
+  doDeleteRefArticle(aid, anom);
+}
+
+async function doDeleteRefArticle(aid, anom) {
+  try {
+    const art = REL_ARTS[aid];
+    if (!art) return;
+    const famille_nom = art.famille_nom;
+    // Supprimer la ligne dans la feuille Articles
+    if (gTok) {
+      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } }).then(r => r.json());
+      const artSheet = meta.sheets.find(s => s.properties.title === 'Articles');
+      if (artSheet) {
+        const sheetId = artSheet.properties.sheetId;
+        const artsArr = Object.keys(REL_ARTS);
+        const idx = artsArr.indexOf(aid);
+        if (idx >= 0) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] })
+          });
+        }
+      }
+    }
+    // Retirer du cache local
+    delete REL_ARTS[aid];
+    if (FAMS[famille_nom]) FAMS[famille_nom] = FAMS[famille_nom].filter(a => a !== anom);
+    buildHier();
+    invalidateAllItemsCache();
+    saveLocal();
+    saveDBCache();
+    filterRefArticles();
+    showToast(`Article "${anom}" supprimé du référentiel`, 'success');
+    logActivity('DELETE_REF_ARTICLE', `${anom} (${famille_nom})`, aid);
+  } catch(e) {
+    showToast('Erreur suppression: ' + e.message, 'danger');
+    console.error(e);
+  }
 }
 
 // ---------- DASHBOARD PROGRESS ----------
@@ -4716,9 +4790,43 @@ async function updatePhotosInSheet(cbi) {
 }
 
 // ---------- EXPORT, RESET, SUIVI, SCAN LIBRE ----------
-function openExport() { if (!can('canExport')) { showToast('Accès refusé', 'danger'); return; } const ti = Object.keys(updates).length, tn = newItems.filter(r => r._new && !r._newLoc).length; showModal(`<div class="modal-drag"></div><div class="modal-head"><h2>Exporter</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i><div><strong>${ti}</strong> mis à jour · <strong>${tn}</strong> nouveaux</div></div><button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-spreadsheet"></i> Mises à jour (Excel)</button><button class="btn btn-block" onclick="expAll()" ${DB.length ? '' : 'disabled'}><i class="ti ti-database-export"></i> Base complète (Excel)</button><button class="btn btn-block" onclick="generateExportFinal();closeModal();" ${DB.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Export final dans Google Sheets</button></div>`); }
+function openExport() {
+  if (!can('canExport')) { showToast('Accès refusé', 'danger'); return; }
+  const all = getAllItems();
+  // Calcul des statuts
+  let nInv = 0, nTrans = 0, nNew = 0, nWait = 0;
+  for (const r of all) {
+    const u = updates[r.cbi];
+    if (r._new) nNew++;
+    else if (u && u.obs && /TRANSFÉRÉ de /.test(u.obs)) nTrans++;
+    else if (u) nInv++;
+    else nWait++;
+  }
+  const tot = all.length;
+  const traite = nInv + nTrans + nNew;
+  const pct = tot ? Math.round(traite / tot * 100) : 0;
+  showModal(`<div class="modal-drag"></div>
+    <div class="modal-head"><h2><i class="ti ti-table-export"></i> État global de l'inventaire</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="stats-row" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-lbl">Total articles</div><div class="stat-val">${tot.toLocaleString('fr-FR')}</div></div>
+        <div class="stat-card"><div class="stat-lbl">Traités</div><div class="stat-val" style="color:var(--success-txt)">${traite.toLocaleString('fr-FR')}</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avancement</div><div class="stat-val">${pct}%</div></div>
+      </div>
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span><i class="ti ti-clipboard-check" style="color:var(--success-txt)"></i> Inventoriés</span><strong>${nInv.toLocaleString('fr-FR')}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span><i class="ti ti-transfer" style="color:var(--accent)"></i> Transférés</span><strong>${nTrans.toLocaleString('fr-FR')}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0"><span><i class="ti ti-plus" style="color:var(--info-txt)"></i> Nouveaux ajoutés</span><strong>${nNew.toLocaleString('fr-FR')}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--text2)"><span><i class="ti ti-clock"></i> En attente</span><strong>${nWait.toLocaleString('fr-FR')}</strong></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">L'état global réunit <strong>tous les articles</strong> avec leurs informations à jour (état, critères, photos, N° Amendis) et leur statut (inventorié / transféré / nouveau / en attente).</div>
+      <button class="btn btn-block btn-primary" onclick="generateExportFinal();closeModal();" ${all.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Générer l'état global dans Google Sheets</button>
+      <button class="btn btn-block" onclick="expAll()" ${all.length ? '' : 'disabled'}><i class="ti ti-file-spreadsheet"></i> Télécharger l'état global (Excel)</button>
+      <button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-export"></i> Télécharger uniquement les mises à jour (Excel)</button>
+    </div>`);
+}
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); logActivity('EXPORT', `Mises à jour (${rows.length} lignes)`); }
-function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); return { 'CBI': r.cbi, 'CBE': r.cbe, 'SITE': r.site, 'BAT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'FAM': r.fam, 'ART': r.art, 'QTE': r.qty, 'SERV': u.serv || r.serv, 'RENOUV': u.renouv || r.renouv, 'OBS': u.obs !== undefined ? u.obs : r.obs, 'ARTICLE TROUVE': u.trouve || '', 'MARQUE': r.marque, 'MODELE': r.modele, 'SERIE': r.serie, 'DIR': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE', 'NOUVEAU': r._new ? 'OUI' : 'NON', 'PHOTOS': pLinks }; }); dlX(rows, 'inv_complet'); closeModal(); showToast('Export téléchargé', 'success'); logActivity('EXPORT', `Base complète (${rows.length} lignes)`); }
+function expAll() { if (!DB.length) return; const rows = [...DB, ...newItems.filter(r => !r._newLoc)].map(r => { const u = updates[r.cbi] || {}; const pLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | '); const fullObs = u.obs !== undefined ? u.obs : (r.obs || ''); const criteres = extractCriteresFromObs(fullObs).join(' ; '); const obsClean = fullObs.split('\n').filter(l => !l.startsWith('État observé:')).join(' ').trim(); let statut = 'EN ATTENTE'; if (r._new) statut = 'NOUVEAU'; else if (u.obs && /TRANSFÉRÉ de /.test(u.obs)) statut = 'TRANSFÉRÉ'; else if (updates[r.cbi]) statut = 'INVENTORIÉ'; return { 'SITE': r.site, 'BATIMENT': r.bat, 'ETAGE': r.etage, 'BUREAU': r.bureau, 'CBE': r.cbe, 'CBI': r.cbi, 'FAMILLE': r.fam, 'ARTICLE': r.art, 'QTE': r.qty, 'ETAT SERVICE': u.serv || r.serv, 'RENOUVELABILITE': u.renouv || r.renouv, 'CRITERES ETAT': criteres, 'OBSERVATION': obsClean, 'ARTICLE TROUVE': u.trouve || '', 'N° SERIE': r.serie, 'MODELE': r.modele, 'MARQUE': r.marque, 'N° AMENDIS': r.prod || '', 'DIRECTION': r.dir, 'INVENTORISTE': u.by || r.nom_inv || '', 'DATE': u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '', 'STATUT': statut, 'PHOTOS': pLinks }; }); dlX(rows, 'etat_global_inventaire'); closeModal(); showToast('État global téléchargé', 'success'); logActivity('EXPORT', `État global (${rows.length} lignes)`); }
 function dlX(rows, name) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventaire'); XLSX.writeFile(wb, name + '_' + new Date().toISOString().split('T')[0] + '.xlsx'); }
 function resetUpdates() { if (!can('canReset')) { showToast('Accès refusé', 'danger'); return; } if (!confirm('Réinitialiser les données locales ?')) return; const before = Object.keys(updates).length; updates = {}; newItems = []; newLocs = []; pendingWrites = []; invalidateAllItemsCache();
     invalidateCbeIndex(); saveLocal(); renderMain(); renderDataStatus(); renderPendingIndicator(); showToast('Réinitialisé', 'success'); logActivity('RESET', `${before} mises à jour supprimées`, 'local'); }
@@ -4952,36 +5060,54 @@ async function changeSiteStatut(site, statut) {
 }
 async function generateExportFinal() {
   if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
-  showToast('Génération export final…', 'info');
+  showToast('Génération état global…', 'info');
   try {
     const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
     const meta = await r.json();
     const exist = meta.sheets.map(s => s.properties.title);
     if (!exist.includes(SH_EXPORT)) {
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SH_EXPORT } } }] }) });
-      await sPut(`${SH_EXPORT}!A1`, [H_EXPORT]);
+    } else {
+      // Vider la feuille existante avant de réécrire (éviter les anciennes lignes résiduelles)
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${SH_EXPORT}!A2:X100000:clear`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}` } });
     }
+    await sPut(`${SH_EXPORT}!A1`, [H_EXPORT]);
+
     const all = getAllItems();
     const rows = all.map(r => {
       const u = updates[r.cbi] || {};
       const photoLinks = (photos[r.cbi] || []).map(p => p.viewUrl).join(' | ');
-      return [r.site, r.bat, r.etage, r.bureau, r.cbe, r.cbi, r.fam, r.art, r.qty,
+      // Observation : séparer critères et texte
+      const fullObs = u.obs !== undefined ? u.obs : (r.obs || '');
+      const criteres = extractCriteresFromObs(fullObs).join(' ; ');
+      const obsClean = fullObs.split('\n').filter(l => !l.startsWith('État observé:')).join(' ').trim();
+      // Statut détaillé
+      let statut = 'EN ATTENTE';
+      if (r._new) statut = 'NOUVEAU';
+      else if (u.obs && /TRANSFÉRÉ de /.test(u.obs)) statut = 'TRANSFÉRÉ';
+      else if (updates[r.cbi]) statut = 'INVENTORIÉ';
+      return [
+        r.site, r.bat, r.etage, r.bureau, r.cbe, r.cbi, r.fam, r.art, r.qty,
         u.serv || r.serv, u.renouv || r.renouv,
-        u.obs !== undefined ? u.obs : (r.obs || ''),
-        u.trouve || '', r.serie || '', r.modele || '', r.marque || '',
+        criteres, obsClean, u.trouve || '',
+        r.serie || '', r.modele || '', r.marque || '', r.prod || '',
         r.dir || '', r.patrim || '',
         u.by || r.nom_inv || '',
         u.ts ? new Date(u.ts).toLocaleDateString('fr-FR') : '',
-        updates[r.cbi] ? 'INVENTORIE' : 'EN ATTENTE',
-        r._new ? 'OUI' : 'NON',
-        photoLinks];
+        statut, photoLinks
+      ];
     });
     for (let i = 0; i < rows.length; i += 500) {
       const batch = rows.slice(i, i + 500);
-      await sPut(`${SH_EXPORT}!A${i + 2}:W${i + batch.length + 1}`, batch);
+      await sPut(`${SH_EXPORT}!A${i + 2}:X${i + batch.length + 1}`, batch);
     }
-    showToast(`Export final généré : ${rows.length} lignes dans "${SH_EXPORT}"`, 'success');
-    logActivity('EXPORT_FINAL', `${rows.length} lignes exportées`, SH_EXPORT);
+    // Statistiques du résumé
+    const nInv = rows.filter(r => r[22] === 'INVENTORIÉ').length;
+    const nTrans = rows.filter(r => r[22] === 'TRANSFÉRÉ').length;
+    const nNew = rows.filter(r => r[22] === 'NOUVEAU').length;
+    const nWait = rows.filter(r => r[22] === 'EN ATTENTE').length;
+    showToast(`État global : ${rows.length} lignes (${nInv} inventoriés, ${nTrans} transférés, ${nNew} nouveaux, ${nWait} en attente)`, 'success');
+    logActivity('EXPORT_FINAL', `${rows.length} lignes — ${nInv} inv. / ${nTrans} transf. / ${nNew} nouv. / ${nWait} attente`, SH_EXPORT);
   } catch(e) { showToast('Erreur export: ' + e.message, 'danger'); console.error(e); }
 }
 function openScanLibre() { showModal(`<div class="modal-drag"></div><div class="modal-head"><h2><i class="ti ti-scan"></i> Scan libre</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="modal-body"><div class="alert alert-info"><i class="ti ti-info-circle"></i>Scannez n’importe quel code barre — recherche dans toute la base.</div><div class="scan-libre-zone"><i class="ti ti-barcode" style="font-size:36px;color:var(--text3)"></i><input type="text" id="scan-libre-inp" placeholder="Scanner ou saisir le code barre…" onkeydown="onScanLibreKey(event)" autocomplete="off" inputmode="text" autofocus><div style="font-size:12px;color:var(--text3);margin-top:4px">↵ Entrée pour rechercher</div></div><div id="scan-libre-result"></div></div>`); setTimeout(() => document.getElementById('scan-libre-inp')?.focus(), 100); }
@@ -5082,6 +5208,10 @@ function openEditLocation(site, bat, etage, bureau) {
       ${cbeField}
       ${extraFields}
       ${cascadeWarn}
+      ${can('canDelete') ? `<div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--danger-txt);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Zone dangereuse</div>
+        <button class="btn btn-block" style="color:var(--danger-txt);border-color:var(--danger-ring)" data-level="${level}" data-site="${esc(site||'')}" data-bat="${esc(bat||'')}" data-etage="${esc(etage||'')}" data-bureau="${esc(bureau||'')}" onclick="confirmDeleteLocation(this)"><i class="ti ti-trash"></i> Supprimer ce ${label}${items.length ? ` (${items.length} article(s))` : ''}</button>
+      </div>` : ''}
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
         <button class="btn btn-primary" data-level="${level}" data-site="${esc(site||'')}" data-bat="${esc(bat||'')}" data-etage="${esc(etage||'')}" data-bureau="${esc(bureau||'')}" onclick="saveEditLocation(this)"><i class="ti ti-check"></i> Enregistrer</button>
@@ -5222,6 +5352,18 @@ async function saveEditLocation(btn) {
         const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
         if (sCode === oldSite && bNom === oldBat && e.etage === oldEtage && e.bureau === oldBureau) { emp_id = eid; break; }
       }
+      // Vérifier l'unicité du CBE avant toute écriture
+      const cbeCheckEl = document.getElementById('el-cbe');
+      if (cbeCheckEl) {
+        const cbeToCheck = cbeCheckEl.value.trim();
+        if (cbeToCheck) {
+          const conflict = findCbeConflict(cbeToCheck, emp_id);
+          if (conflict) {
+            showToast(`Code barre "${cbeToCheck}" déjà utilisé par : ${conflict.site} › ${conflict.bat} › ${conflict.etage} › ${conflict.bureau}`, 'danger');
+            return;
+          }
+        }
+      }
       if (emp_id && gTok) {
         const empsArr = Object.keys(REL_EMPS);
         const idx = empsArr.indexOf(emp_id);
@@ -5272,6 +5414,104 @@ async function saveEditLocation(btn) {
   logActivity('EDIT_LOCATION', `${labelMap[level]}: renommage (${count} articles)`, `${level}`);
 }
 
+// ─────────────────────────────────────────────────────────────
+//  SUPPRESSION D'EMPLACEMENT (admin uniquement)
+// ─────────────────────────────────────────────────────────────
+function confirmDeleteLocation(btn) {
+  if (!can('canDelete')) { showToast('Accès refusé — administrateur uniquement', 'danger'); return; }
+  const level = btn.dataset.level;
+  const site = btn.dataset.site, bat = btn.dataset.bat, etage = btn.dataset.etage, bureau = btn.dataset.bureau;
+  const labelMap = { site: 'site', bat: 'bâtiment', etage: 'étage', bureau: 'bureau' };
+  const lbl = labelMap[level];
+  const name = level === 'site' ? site : level === 'bat' ? bat : level === 'etage' ? etage : bureau;
+  const items = getItemsAt(site, level === 'site' ? null : bat, (level === 'site' || level === 'bat') ? null : etage, level === 'bureau' ? bureau : null);
+  const count = items.length;
+
+  // Bloquer la suppression si des articles existent (sécurité)
+  if (count > 0) {
+    showToast(`Impossible de supprimer : ${count} article(s) rattaché(s). Transférez ou supprimez d'abord les articles.`, 'danger');
+    return;
+  }
+
+  // Confirmation forte : taper le nom exact
+  const userInput = prompt(
+    `⚠ SUPPRESSION DÉFINITIVE\n\n` +
+    `Vous allez supprimer le ${lbl} :\n` +
+    `   "${name}"\n\n` +
+    `${level !== 'bureau' ? `Tous les sous-emplacements vides rattachés seront aussi supprimés.\n\n` : ''}` +
+    `Cette action est irréversible.\n\n` +
+    `Pour confirmer, tapez exactement le nom :\n"${name}"`
+  );
+  if (userInput !== name) {
+    if (userInput !== null) showToast('Confirmation invalide — suppression annulée', 'warn');
+    return;
+  }
+  doDeleteLocation(level, site, bat, etage, bureau);
+}
+
+async function doDeleteLocation(level, site, bat, etage, bureau) {
+  const labelMap = { site: 'Site', bat: 'Bâtiment', etage: 'Étage', bureau: 'Bureau' };
+  const name = level === 'site' ? site : level === 'bat' ? bat : level === 'etage' ? etage : bureau;
+  try {
+    // Identifier les emplacements (REL_EMPS) à supprimer
+    const empIdsToDelete = [];
+    for (const eid in REL_EMPS) {
+      const e = REL_EMPS[eid];
+      const sCode = (REL_SITES[e.site_id] || {}).site_code;
+      const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
+      let match = false;
+      if (level === 'site') match = (sCode === site);
+      else if (level === 'bat') match = (sCode === site && bNom === bat);
+      else if (level === 'etage') match = (sCode === site && bNom === bat && e.etage === etage);
+      else if (level === 'bureau') match = (sCode === site && bNom === bat && e.etage === etage && e.bureau === bureau);
+      if (match) empIdsToDelete.push(eid);
+    }
+
+    // Supprimer les lignes dans la feuille Emplacements (de bas en haut pour préserver les index)
+    if (gTok && empIdsToDelete.length) {
+      // Récupérer le sheetId de l'onglet Emplacements
+      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } }).then(r => r.json());
+      const empSheet = meta.sheets.find(s => s.properties.title === 'Emplacements');
+      if (empSheet) {
+        const sheetId = empSheet.properties.sheetId;
+        const empsArr = Object.keys(REL_EMPS);
+        // Indices de ligne (0-based dans REL_EMPS → +1 pour header) triés décroissant
+        const rowIndices = empIdsToDelete.map(eid => empsArr.indexOf(eid)).filter(i => i >= 0).sort((a, b) => b - a);
+        const requests = rowIndices.map(idx => ({
+          deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } }
+        }));
+        if (requests.length) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, {
+            method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests })
+          });
+        }
+      }
+    }
+
+    // Supprimer du cache local REL_EMPS
+    for (const eid of empIdsToDelete) delete REL_EMPS[eid];
+
+    // Si suppression d'un site/bâtiment entièrement vide, nettoyer aussi REL_SITES/REL_BATS si plus aucun emplacement
+    // (on garde par sécurité, juste retirer de HIER via buildHier)
+
+    buildHier();
+    invalidateAllItemsCache();
+    invalidateCbeIndex();
+    invalidateStatsCache();
+    saveLocal();
+    saveDBCache();
+    closeModal();
+    refreshCurrentView();
+    renderDataStatus();
+    showToast(`${labelMap[level]} "${name}" supprimé`, 'success');
+    logActivity('DELETE_LOCATION', `${labelMap[level]}: ${name} (${empIdsToDelete.length} emplacement(s))`, level);
+  } catch(e) {
+    showToast('Erreur suppression: ' + e.message, 'danger');
+    console.error(e);
+  }
+}
+
 // ---------- OPEN ADD LOCATION ----------
 function openAddLocation() {
   if (!can('canAddLocation')) { showToast('Accès refusé', 'danger'); return; }
@@ -5291,6 +5531,15 @@ async function saveLoc() {
   const cbe = document.getElementById('al-cbe').value.trim();
   const type = document.getElementById('al-type').value.trim();
   if (!site || !bat || !etage || !bureau) { showToast('Tous les champs sont requis', 'warn'); return; }
+
+  // Vérifier l'unicité du CBE (code barre emplacement)
+  if (cbe) {
+    const conflict = findCbeConflict(cbe, null);
+    if (conflict) {
+      showToast(`Code barre "${cbe}" déjà utilisé par : ${conflict.site} › ${conflict.bat} › ${conflict.etage} › ${conflict.bureau}`, 'danger');
+      return;
+    }
+  }
 
   try {
     // 1. Créer le site s'il n'existe pas
