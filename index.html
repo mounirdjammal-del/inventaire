@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 12.2 -->
+<!-- VERSION 12.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -161,11 +161,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg3);color:var(--text);fo
 
 /* ── APP LAYOUT ── */
 .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
-.topbar{background:var(--bg);border-bottom:1px solid var(--border);padding:0 16px;height:56px;display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:10;backdrop-filter:blur(12px)}
+.topbar{background:var(--topbar-bg,rgba(250,250,248,.8));border-bottom:1px solid var(--border);padding:0 16px;height:58px;display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:10;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%)}
 .logo{font-size:17px;font-weight:800;color:var(--text);white-space:nowrap;letter-spacing:-.02em}
 .logo span{color:var(--text3);font-weight:500}
 .topbar-right{margin-left:auto;display:flex;gap:6px;align-items:center}
 .content{flex:1;display:flex;overflow:hidden}
+@media(prefers-color-scheme:dark){.topbar{--topbar-bg:rgba(17,17,16,.8)}}
 
 /* ── SIDEBAR ── */
 .sidebar{width:300px;flex-shrink:0;background:var(--bg);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;transition:transform .3s cubic-bezier(.4,0,.2,1)}
@@ -183,18 +184,58 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg3);color:var(--text);fo
 }
 
 /* ── BUTTONS ── */
-.btn{min-height:var(--touch);background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);padding:0 18px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;color:var(--text);font-family:'DM Sans',sans-serif;font-weight:500;transition:var(--transition);white-space:nowrap;touch-action:manipulation;box-shadow:var(--shadow-sm)}
-.btn:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
-.btn:active{transform:translateY(0);box-shadow:none;opacity:.85}
-.btn-sm{min-height:36px;padding:0 12px;font-size:13px;border-radius:10px}
-.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px rgba(37,99,235,.25)}
-.btn-primary:hover{box-shadow:0 4px 16px rgba(37,99,235,.35)}
-.btn-google{background:#fff;border:1px solid #e0e0e0;color:#3c4043;box-shadow:var(--shadow-sm)}
-.btn-google:hover{box-shadow:var(--shadow-md)}
+.btn{min-height:var(--touch);background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);padding:0 18px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;color:var(--text);font-family:'DM Sans',sans-serif;font-weight:600;transition:var(--transition);white-space:nowrap;touch-action:manipulation;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;letter-spacing:-.01em;-webkit-tap-highlight-color:transparent;user-select:none}
+.btn i{font-size:17px;flex-shrink:0;line-height:1}
+.btn:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);border-color:var(--text3)}
+.btn:active{transform:translateY(0) scale(.98);box-shadow:var(--shadow-sm);opacity:.92;transition:all .08s ease}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--info-ring)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;pointer-events:none}
+/* Ripple effect au clic */
+.btn::after{content:'';position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .3s}
+.btn:active::after{opacity:.06;transition:opacity 0s}
+
+.btn-sm{min-height:38px;padding:0 14px;font-size:13px;border-radius:10px;gap:6px}
+.btn-sm i{font-size:15px}
+.btn-lg{min-height:54px;padding:0 24px;font-size:16px;border-radius:var(--radius-lg)}
+
+/* Variante primaire (action principale) */
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;box-shadow:0 2px 10px rgba(37,99,235,.28)}
+.btn-primary:hover{box-shadow:0 6px 20px rgba(37,99,235,.4);border-color:transparent;filter:brightness(1.05)}
+.btn-primary:active{filter:brightness(.97)}
+
+/* Variantes sémantiques pleines */
+.btn-success{background:var(--success-txt);color:#fff;border-color:transparent;box-shadow:0 2px 10px rgba(5,150,105,.25)}
+.btn-success:hover{box-shadow:0 6px 20px rgba(5,150,105,.36);border-color:transparent;filter:brightness(1.05)}
+.btn-danger{background:var(--danger-txt);color:#fff;border-color:transparent;box-shadow:0 2px 10px rgba(220,38,38,.25)}
+.btn-danger:hover{box-shadow:0 6px 20px rgba(220,38,38,.36);border-color:transparent;filter:brightness(1.05)}
+
+/* Variantes douces (fond teinté, texte coloré) — pour actions secondaires */
+.btn-soft-danger{background:var(--danger-bg);color:var(--danger-txt);border-color:transparent}
+.btn-soft-danger:hover{background:var(--danger-bg);filter:brightness(.97);border-color:var(--danger-ring)}
+.btn-soft-success{background:var(--success-bg);color:var(--success-txt);border-color:transparent}
+.btn-soft-success:hover{background:var(--success-bg);filter:brightness(.97);border-color:var(--success-ring)}
+.btn-soft-accent{background:var(--accent-bg);color:var(--accent);border-color:transparent}
+.btn-soft-accent:hover{background:var(--accent-bg);filter:brightness(.97);border-color:var(--info-ring)}
+
+/* Variante fantôme (sans fond, pour barres d'actions discrètes) */
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--text2);font-weight:500}
+.btn-ghost:hover{background:var(--bg2);box-shadow:none;border-color:transparent;transform:none;color:var(--text)}
+.btn-ghost:active{background:var(--bg3)}
+
+.btn-google{background:#fff;border:1px solid #dadce0;color:#3c4043;box-shadow:var(--shadow-sm);font-weight:500}
+.btn-google:hover{box-shadow:var(--shadow-md);background:#f8f9fa;border-color:#dadce0}
 .btn-menu{display:none;min-height:44px;min-width:44px;padding:0;border:none;background:transparent;box-shadow:none}
-.btn-menu:hover{box-shadow:none}
-.btn-icon{min-height:44px;min-width:44px;padding:0;border:none;background:transparent;border-radius:50%;box-shadow:none}
-.btn-block{width:100%;justify-content:center;margin-bottom:8px}
+.btn-menu:hover{box-shadow:none;background:var(--bg2);transform:none}
+.btn-icon{min-height:42px;min-width:42px;padding:0;border:none;background:transparent;border-radius:12px;box-shadow:none;color:var(--text2)}
+.btn-icon:hover{background:var(--bg2);box-shadow:none;transform:none;color:var(--text)}
+.btn-icon:active{background:var(--bg3)}
+.btn-block{width:100%;justify-content:center;margin-bottom:10px}
+.btn-block:last-child{margin-bottom:0}
+
+/* Groupe de boutons (barre d'actions) */
+.btn-group{display:flex;gap:10px;flex-wrap:wrap}
+.btn-group .btn{flex:1;min-width:0}
+.btn-group-stack{display:flex;flex-direction:column;gap:8px}
 
 /* ── FORMS ── */
 select,input[type=text],input[type=number],textarea{
@@ -270,7 +311,10 @@ textarea{min-height:80px;resize:vertical}
 .modal-head{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:1}
 .modal-head h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
 .modal-body{padding:20px}
-.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.modal-actions .btn{min-width:110px}
+.modal-actions .btn-primary,.modal-actions .btn-success,.modal-actions .btn-danger{flex:1;max-width:220px}
+@media(max-width:480px){.modal-actions{flex-direction:column-reverse;gap:8px}.modal-actions .btn{width:100%;max-width:none}}
 .modal-drag{width:40px;height:4px;background:var(--bg3);border-radius:2px;margin:10px auto 0;display:block}
 @media(min-width:600px){.modal-drag{display:none}}
 
@@ -349,30 +393,43 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
 #btn-glogin:active{transform:translateY(0)}
 
 /* ── BOTTOM NAV ── */
-.nav-bar{background:var(--bg);border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:6px 0 env(safe-area-inset-bottom,6px);flex-shrink:0;position:sticky;bottom:0;z-index:20;backdrop-filter:blur(12px)}
-.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;border-radius:var(--radius);cursor:pointer;min-width:56px;transition:var(--transition);border:none;background:transparent;font-family:'DM Sans',sans-serif;color:var(--text3);font-weight:500}
-.nav-item.active{color:var(--accent);background:var(--accent-bg)}
-.nav-item i{font-size:22px;transition:transform .2s}
-.nav-item.active i{transform:scale(1.1)}
-.nav-item span{font-size:10px;font-weight:600}
+.nav-bar{background:var(--nav-bg,rgba(255,255,255,.85));border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:stretch;padding:8px 6px calc(env(safe-area-inset-bottom,8px) + 8px);flex-shrink:0;position:sticky;bottom:0;z-index:20;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);gap:2px}
+.nav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px 6px;border-radius:14px;cursor:pointer;flex:1;min-width:0;max-width:90px;transition:color .2s ease,background .25s ease;border:none;background:transparent;font-family:'DM Sans',sans-serif;color:var(--text3);font-weight:500;position:relative;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.nav-item i{font-size:23px;transition:transform .25s cubic-bezier(.34,1.56,.64,1);line-height:1}
+.nav-item span{font-size:10px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;transition:opacity .2s}
+.nav-item:active i{transform:scale(.88)}
+.nav-item:hover:not(.active){color:var(--text2)}
+.nav-item.active{color:var(--accent)}
+.nav-item.active i{transform:translateY(-1px) scale(1.08)}
+/* Pastille active au-dessus de l'icône */
+.nav-item.active::before{content:'';position:absolute;top:2px;left:50%;transform:translateX(-50%);width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+/* Halo doux derrière l'icône active */
+.nav-item.active i{filter:drop-shadow(0 2px 6px var(--accent-bg))}
+@media(prefers-color-scheme:dark){.nav-bar{--nav-bg:rgba(28,28,26,.85)}}
 
 /* ── HOME TILES ── */
 .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 0;max-width:500px;margin:0 auto}
-.home-tile{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:28px 16px;text-align:center;cursor:pointer;transition:var(--transition);display:flex;flex-direction:column;align-items:center;gap:14px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
-.home-tile::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,currentColor,transparent 70%);opacity:.04;pointer-events:none}
-.home-tile:hover{box-shadow:var(--shadow-md);transform:translateY(-3px)}
-.home-tile:active{transform:scale(.97)}
-.home-tile i{font-size:36px}
-.home-tile .tile-label{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.home-tile{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:24px 16px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,border-color .2s ease;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.home-tile:hover{box-shadow:var(--shadow-lg);transform:translateY(-4px)}
+.home-tile:active{transform:scale(.96)}
+/* Pastille d'icône colorée */
+.home-tile .tile-icon{width:60px;height:60px;border-radius:18px;display:flex;align-items:center;justify-content:center;transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+.home-tile:hover .tile-icon{transform:scale(1.08) rotate(-3deg)}
+.home-tile i{font-size:30px}
+.home-tile .tile-label{font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
 .home-tile .tile-sub{font-size:12px;color:var(--text2);font-weight:500}
-.tile-inventory{border-color:var(--info-ring);color:var(--info-txt)}
-.tile-inventory i,.tile-inventory .tile-label{color:var(--info-txt)}
-.tile-locations{border-color:var(--success-ring);color:var(--success-txt)}
-.tile-locations i,.tile-locations .tile-label{color:var(--success-txt)}
-.tile-articles{border-color:var(--warn-ring);color:var(--warn-txt)}
-.tile-articles i,.tile-articles .tile-label{color:var(--warn-txt)}
-.tile-progress{border-color:var(--border2);color:var(--text)}
-.tile-progress i,.tile-progress .tile-label{color:var(--accent2)}
+.tile-inventory:hover{border-color:var(--info-ring)}
+.tile-inventory .tile-icon{background:var(--info-bg)}
+.tile-inventory i{color:var(--info-txt)}
+.tile-locations:hover{border-color:var(--success-ring)}
+.tile-locations .tile-icon{background:var(--success-bg)}
+.tile-locations i{color:var(--success-txt)}
+.tile-articles:hover{border-color:var(--warn-ring)}
+.tile-articles .tile-icon{background:var(--warn-bg)}
+.tile-articles i{color:var(--warn-txt)}
+.tile-progress:hover{border-color:var(--border2)}
+.tile-progress .tile-icon{background:var(--accent-bg)}
+.tile-progress i{color:var(--accent2)}
 
 /* ── MISC ── */
 .step-n{width:24px;height:24px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
@@ -1175,11 +1232,29 @@ function getModelesList(marque) {
   return _modelesCache[marque.trim()] || [];
 }
 
+// Cache des sheetId d'onglets (title → sheetId) pour éviter les fetch metadata répétés
+let _TAB_SHEET_IDS = null;
+async function getTabSheetId(title) {
+  if (!gTok || !gsConf.sheetId) return null;
+  if (!_TAB_SHEET_IDS) {
+    try {
+      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } }).then(r => r.json());
+      _TAB_SHEET_IDS = {};
+      for (const s of (meta.sheets || [])) _TAB_SHEET_IDS[s.properties.title] = s.properties.sheetId;
+    } catch(e) { return null; }
+  }
+  return _TAB_SHEET_IDS[title] != null ? _TAB_SHEET_IDS[title] : null;
+}
+function invalidateTabSheetIds() { _TAB_SHEET_IDS = null; }
+
 async function ensureSheets() {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
   if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
   const meta = await r.json();
   const exist = meta.sheets.map(s => s.properties.title);
+  // Alimenter le cache des sheetId au passage
+  _TAB_SHEET_IDS = {};
+  for (const s of meta.sheets) _TAB_SHEET_IDS[s.properties.title] = s.properties.sheetId;
   const needed = ['Updates', 'NouveauxArticles', 'SuiviSites', 'ActivityLog'].filter(s => !exist.includes(s));
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
@@ -1190,6 +1265,7 @@ async function ensureSheets() {
       'ActivityLog': ['timestamp','user','action','details','target']
     };
     for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
+    invalidateTabSheetIds(); // les nouveaux onglets ont changé la structure
   }
 }
 
@@ -2200,7 +2276,7 @@ function renderHome() {
 
     ${myStats.total > 0 ? renderMyStatsCard(myStats) : ''}
 
-    <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><i class="ti ti-clipboard-check"></i><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l'inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><i class="ti ti-chart-bar"></i><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><i class="ti ti-map-pin"></i><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><i class="ti ti-box"></i><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
+    <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-clipboard-check"></i></div><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l'inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-chart-bar"></i></div><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-map-pin"></i></div><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-box"></i></div><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
     <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">${can('canSuivi') ? '<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button>' : ''}<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button>${can('canExport') ? '<button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button>' : ''}<button class="btn btn-sm" onclick="openActivityLog()"><i class="ti ti-history"></i> Journal</button></div>
   </div>`;
 }
@@ -3275,7 +3351,7 @@ function filterRefArticles() {
         <div style="font-size:14px;font-weight:700;color:${a.usage > 0 ? 'var(--accent)' : 'var(--text3)'}">${a.usage.toLocaleString('fr-FR')}</div>
         <div class="txt-xs">${a.usage > 1 ? 'biens' : 'bien'}</div>
       </div>
-      ${can('canDelete') ? `<button class="btn btn-sm" style="min-height:30px;padding:0 8px;box-shadow:none;color:${a.usage > 0 ? 'var(--text3)' : 'var(--danger-txt)'}" data-aid="${esc(a.article_id)}" data-anom="${esc(a.article_nom)}" data-usage="${a.usage}" onclick="confirmDeleteRefArticle(this)" title="${a.usage > 0 ? 'Suppression impossible (biens rattachés)' : 'Supprimer cet article'}"><i class="ti ti-trash"></i></button>` : ''}
+      ${can('canDelete') ? `<button class="btn btn-icon" style="color:${a.usage > 0 ? 'var(--text3)' : 'var(--danger-txt)'}" data-aid="${esc(a.article_id)}" data-anom="${esc(a.article_nom)}" data-usage="${a.usage}" onclick="confirmDeleteRefArticle(this)" title="${a.usage > 0 ? 'Suppression impossible (biens rattachés)' : 'Supprimer cet article'}"><i class="ti ti-trash"></i></button>` : ''}
     </div>
   `).join('') + (total > shown.length ? `<div style="text-align:center;padding:12px"><button class="btn btn-sm" onclick="showMoreRefArticles()"><i class="ti ti-plus"></i> Afficher plus</button></div>` : '');
 }
@@ -3303,10 +3379,8 @@ async function doDeleteRefArticle(aid, anom) {
     const famille_nom = art.famille_nom;
     // Supprimer la ligne dans la feuille Articles
     if (gTok) {
-      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } }).then(r => r.json());
-      const artSheet = meta.sheets.find(s => s.properties.title === 'Articles');
-      if (artSheet) {
-        const sheetId = artSheet.properties.sheetId;
+      const sheetId = await getTabSheetId('Articles');
+      if (sheetId != null) {
         const artsArr = Object.keys(REL_ARTS);
         const idx = artsArr.indexOf(aid);
         if (idx >= 0) {
@@ -4161,7 +4235,7 @@ function openEditItem(item) {
       </div>
     </details>
 
-    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide('e', extractCriteresFromObs(obs))}${originalObs ? `<div class="form-group" style="margin-top:14px"><label class="form-label" style="color:var(--text2)"><i class="ti ti-file-text"></i> Observation initiale (inventaire d'origine)</label><div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--text2);font-style:italic;white-space:pre-wrap">${esc(originalObs)}</div></div>` : ''}<div class="form-group" style="margin-top:14px"><label class="form-label"><i class="ti ti-edit"></i> Observation de la mise à jour</label><textarea id="e-obs" rows="3" placeholder="Notes sur l'état actuel, observations spécifiques…">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
+    <div class="form-row"><div class="form-group"><label class="form-label">État de service</label><select id="e-sv">${ES.map(x => `<option${sv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Renouvelabilité</label><select id="e-rv">${ER.map(x => `<option${rv === x ? ' selected' : ''}>${x}</option>`).join('')}</select></div></div>${renderEtatGuide('e', extractCriteresFromObs(obs))}${originalObs ? `<div class="form-group" style="margin-top:14px"><label class="form-label" style="color:var(--text2)"><i class="ti ti-file-text"></i> Observation initiale (inventaire d'origine)</label><div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--text2);font-style:italic;white-space:pre-wrap">${esc(originalObs)}</div></div>` : ''}<div class="form-group" style="margin-top:14px"><label class="form-label"><i class="ti ti-edit"></i> Observation de la mise à jour</label><textarea id="e-obs" rows="3" placeholder="Notes sur l'état actuel, observations spécifiques…">${esc(obs)}</textarea></div><div class="form-group"><label class="form-label">Article trouvé</label><div style="display:flex;gap:10px"><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--success-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="OUI" ${(u.trouve || '') === 'OUI' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--success-txt)"><span style="font-size:15px;font-weight:600;color:var(--success-txt)">✓ Trouvé</span></label><label style="display:flex;align-items:center;gap:8px;flex:1;background:var(--danger-bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer"><input type="radio" name="e-trouve" value="NON" ${(u.trouve || '') === 'NON' ? 'checked' : ''} style="width:18px;height:18px;margin:0;accent-color:var(--danger-txt)"><span style="font-size:15px;font-weight:600;color:var(--danger-txt)">✗ Non trouvé</span></label></div></div>${renderPhotoSection(item.cbi)}<div class="modal-actions"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn btn-success" onclick="saveUpd('${esc(item.cbi)}')"><i class="ti ti-check"></i> Valider</button></div></div>`);
 
   // Stocker la liste complète d'articles pour les datalists dépliables
   window._E_ALL_ARTICLES = allArticles;
@@ -4700,6 +4774,22 @@ function renderPhotoSection(cbi) {
   const thumbs = list.map((p, i) => `<div style="position:relative;display:inline-block;margin:4px"><a href="${p.viewUrl}" target="_blank"><img src="${p.thumbUrl}" alt="photo" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:0.5px solid var(--border)"></a><button onclick="deletePhoto('${cbi}',${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger-bg);color:var(--danger-txt);border:none;cursor:pointer;font-size:12px">✕</button></div>`).join('');
   return `<div class="form-group" id="photo-section-${cbi}"><label class="form-label"><i class="ti ti-camera"></i> Photos (${list.length})</label><div id="photo-thumbs-${cbi}" style="margin-bottom:8px">${thumbs || '<div class="txt-12-muted">Aucune photo</div>'}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-camera"></i> Prendre photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label><label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoCapture(event,'${cbi}')"></label>${!gTok ? '<div style="font-size:11px;color:var(--warn-txt)"><i class="ti ti-alert-triangle"></i> Connectez Google pour sauvegarder</div>' : ''}</div></div>`;
 }
+// Compresse et met en file d'attente IndexedDB une liste de fichiers photo (mode hors-ligne)
+async function queuePhotosLocally(cbi, files) {
+  if (!photos[cbi]) photos[cbi] = [];
+  const startIdx = photos[cbi].length;
+  for (let i = 0; i < files.length; i++) {
+    const compressed = await compressImage(files[i], 1200, 0.82);
+    const previewUrl = URL.createObjectURL(compressed);
+    photos[cbi].push({ id: '', viewUrl: previewUrl, thumbUrl: previewUrl, name: `offline_${startIdx + i + 1}.jpg`, pending: true });
+    await queuePhotoOffline(cbi, compressed, startIdx + i + 1);
+  }
+  savePhotos();
+  const sec = document.getElementById(`photo-section-${cbi}`);
+  if (sec) sec.outerHTML = renderPhotoSection(cbi);
+  renderPendingIndicator();
+}
+
 async function handlePhotoCapture(event, cbi) {
   const files = [...event.target.files];
   if (!files.length) return;
@@ -4707,22 +4797,8 @@ async function handlePhotoCapture(event, cbi) {
   // MODE HORS-LIGNE : compresser et mettre en file d'attente (IndexedDB)
   if (!gTok || !navigator.onLine) {
     showToast(`${files.length} photo(s) en attente — upload au retour de la connexion`, 'info');
-    try {
-      if (!photos[cbi]) photos[cbi] = [];
-      const startIdx = photos[cbi].length;
-      for (let i = 0; i < files.length; i++) {
-        const compressed = await compressImage(files[i], 1200, 0.82);
-        const previewUrl = URL.createObjectURL(compressed);
-        // Ajouter une entrée locale "en attente" pour affichage immédiat
-        photos[cbi].push({ id: '', viewUrl: previewUrl, thumbUrl: previewUrl, name: `offline_${startIdx + i + 1}.jpg`, pending: true });
-        // Stocker le blob dans IndexedDB pour upload ultérieur
-        await queuePhotoOffline(cbi, compressed, startIdx + i + 1);
-      }
-      savePhotos();
-      const sec = document.getElementById(`photo-section-${cbi}`);
-      if (sec) sec.outerHTML = renderPhotoSection(cbi);
-      renderPendingIndicator();
-    } catch(e) { showToast('Erreur stockage photo: ' + e.message, 'danger'); }
+    try { await queuePhotosLocally(cbi, files); }
+    catch(e) { showToast('Erreur stockage photo: ' + e.message, 'danger'); }
     event.target.value = '';
     return;
   }
@@ -4742,20 +4818,7 @@ async function handlePhotoCapture(event, cbi) {
   } catch(err) {
     // Échec réseau pendant l'upload → bascule en file d'attente
     showToast('Upload échoué — photos mises en attente', 'warn');
-    try {
-      if (!photos[cbi]) photos[cbi] = [];
-      const startIdx = photos[cbi].length;
-      for (let i = 0; i < files.length; i++) {
-        const compressed = await compressImage(files[i], 1200, 0.82);
-        const previewUrl = URL.createObjectURL(compressed);
-        photos[cbi].push({ id: '', viewUrl: previewUrl, thumbUrl: previewUrl, name: `offline_${startIdx + i + 1}.jpg`, pending: true });
-        await queuePhotoOffline(cbi, compressed, startIdx + i + 1);
-      }
-      savePhotos();
-      const sec = document.getElementById(`photo-section-${cbi}`);
-      if (sec) sec.outerHTML = renderPhotoSection(cbi);
-      renderPendingIndicator();
-    } catch(e) {}
+    try { await queuePhotosLocally(cbi, files); } catch(e) {}
   }
   event.target.value = '';
 }
@@ -4820,9 +4883,9 @@ function openExport() {
         <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--text2)"><span><i class="ti ti-clock"></i> En attente</span><strong>${nWait.toLocaleString('fr-FR')}</strong></div>
       </div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px">L'état global réunit <strong>tous les articles</strong> avec leurs informations à jour (état, critères, photos, N° Amendis) et leur statut (inventorié / transféré / nouveau / en attente).</div>
-      <button class="btn btn-block btn-primary" onclick="generateExportFinal();closeModal();" ${all.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Générer l'état global dans Google Sheets</button>
-      <button class="btn btn-block" onclick="expAll()" ${all.length ? '' : 'disabled'}><i class="ti ti-file-spreadsheet"></i> Télécharger l'état global (Excel)</button>
-      <button class="btn btn-block" onclick="expUpd()"><i class="ti ti-file-export"></i> Télécharger uniquement les mises à jour (Excel)</button>
+      <button class="btn btn-primary btn-block btn-lg" onclick="generateExportFinal();closeModal();" ${all.length && gTok ? '' : 'disabled'}><i class="ti ti-table-export"></i> Générer l'état global dans Google Sheets</button>
+      <button class="btn btn-soft-accent btn-block" onclick="expAll()" ${all.length ? '' : 'disabled'}><i class="ti ti-file-spreadsheet"></i> Télécharger l'état global (Excel)</button>
+      <button class="btn btn-ghost btn-block" onclick="expUpd()"><i class="ti ti-file-export"></i> Télécharger uniquement les mises à jour (Excel)</button>
     </div>`);
 }
 function expUpd() { const rows = Object.entries(updates).map(([cbi, u]) => { const o = findItemByCbi(cbi) || {}; return { 'CBI': cbi, 'CBE': o.cbe || '', 'SITE': o.site || '', 'BATIMENT': o.bat || '', 'ETAGE': o.etage || '', 'BUREAU': o.bureau || '', 'ARTICLE': o.art || '', 'FAMILLE': o.fam || '', 'ETAT SERVICE': u.serv, 'RENOUV': u.renouv, 'OBS': u.obs, 'ARTICLE TROUVE': u.trouve || '', 'INVENTORISTE': u.by, 'DATE': new Date(u.ts).toLocaleDateString('fr-FR'), 'NOUVEAU': o._new ? 'OUI' : 'NON' }; }); dlX(rows, 'inv_updates'); closeModal(); showToast('Export téléchargé', 'success'); logActivity('EXPORT', `Mises à jour (${rows.length} lignes)`); }
@@ -5062,11 +5125,10 @@ async function generateExportFinal() {
   if (!DB.length) { showToast("Chargez d'abord les données", 'warn'); return; }
   showToast('Génération état global…', 'info');
   try {
-    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
-    const meta = await r.json();
-    const exist = meta.sheets.map(s => s.properties.title);
-    if (!exist.includes(SH_EXPORT)) {
+    const existId = await getTabSheetId(SH_EXPORT);
+    if (existId == null) {
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SH_EXPORT } } }] }) });
+      invalidateTabSheetIds(); // nouvel onglet créé
     } else {
       // Vider la feuille existante avant de réécrire (éviter les anciennes lignes résiduelles)
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}/values/${SH_EXPORT}!A2:X100000:clear`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}` } });
@@ -5210,7 +5272,7 @@ function openEditLocation(site, bat, etage, bureau) {
       ${cascadeWarn}
       ${can('canDelete') ? `<div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
         <div style="font-size:12px;font-weight:700;color:var(--danger-txt);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Zone dangereuse</div>
-        <button class="btn btn-block" style="color:var(--danger-txt);border-color:var(--danger-ring)" data-level="${level}" data-site="${esc(site||'')}" data-bat="${esc(bat||'')}" data-etage="${esc(etage||'')}" data-bureau="${esc(bureau||'')}" onclick="confirmDeleteLocation(this)"><i class="ti ti-trash"></i> Supprimer ce ${label}${items.length ? ` (${items.length} article(s))` : ''}</button>
+        <button class="btn btn-soft-danger btn-block" data-level="${level}" data-site="${esc(site||'')}" data-bat="${esc(bat||'')}" data-etage="${esc(etage||'')}" data-bureau="${esc(bureau||'')}" onclick="confirmDeleteLocation(this)"><i class="ti ti-trash"></i> Supprimer ce ${label}${items.length ? ` (${items.length} article(s))` : ''}</button>
       </div>` : ''}
       <div class="modal-actions">
         <button class="btn" onclick="closeModal()">Annuler</button>
@@ -5469,11 +5531,8 @@ async function doDeleteLocation(level, site, bat, etage, bureau) {
 
     // Supprimer les lignes dans la feuille Emplacements (de bas en haut pour préserver les index)
     if (gTok && empIdsToDelete.length) {
-      // Récupérer le sheetId de l'onglet Emplacements
-      const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } }).then(r => r.json());
-      const empSheet = meta.sheets.find(s => s.properties.title === 'Emplacements');
-      if (empSheet) {
-        const sheetId = empSheet.properties.sheetId;
+      const sheetId = await getTabSheetId('Emplacements');
+      if (sheetId != null) {
         const empsArr = Object.keys(REL_EMPS);
         // Indices de ligne (0-based dans REL_EMPS → +1 pour header) triés décroissant
         const rowIndices = empIdsToDelete.map(eid => empsArr.indexOf(eid)).filter(i => i >= 0).sort((a, b) => b - a);
@@ -5492,13 +5551,12 @@ async function doDeleteLocation(level, site, bat, etage, bureau) {
     // Supprimer du cache local REL_EMPS
     for (const eid of empIdsToDelete) delete REL_EMPS[eid];
 
-    // Si suppression d'un site/bâtiment entièrement vide, nettoyer aussi REL_SITES/REL_BATS si plus aucun emplacement
-    // (on garde par sécurité, juste retirer de HIER via buildHier)
-
     buildHier();
     invalidateAllItemsCache();
     invalidateCbeIndex();
     invalidateStatsCache();
+    // Les suppressions de lignes décalent les index Inventaire/Updates → forcer resync au prochain accès
+    INVENTAIRE_INDEX_BUILT = false;
     saveLocal();
     saveDBCache();
     closeModal();
