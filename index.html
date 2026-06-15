@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 12.9 -->
+<!-- VERSION 13.1 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -42,7 +42,7 @@
   if (!('serviceWorker' in navigator)) return;
   // La version du cache est liée à la version de l'app (voir APP_VERSION).
   // Changer la version invalide automatiquement l'ancien cache → mise à jour propre.
-  const APP_VER = 'inv-v12-6';
+  const APP_VER = 'inv-v13-1';
   const swCode = `
     const CACHE = '${APP_VER}';
     self.addEventListener('install', e => { self.skipWaiting(); });
@@ -580,7 +580,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 12.9</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 13.1</button>
         </div>
       </div>
     </div>
@@ -2241,6 +2241,47 @@ async function syncNow() {
   setSyncing(false);
 }
 
+// Rechargement COMPLET depuis le Google Sheet : ignore et écrase le cache local.
+// À utiliser quand des lignes ont été supprimées/modifiées DIRECTEMENT dans le Sheet
+// (en dehors de l'application), pour que le visuel reflète exactement le contenu du Sheet.
+async function forceReloadFromSheet() {
+  if (!gTok || !gsConf.sheetId) { showToast('Connectez-vous à Google d\'abord', 'warn'); return; }
+  if (isSyncing) return;
+  if (pendingWrites.length) {
+    if (!confirm(`${pendingWrites.length} saisie(s) sont en attente de synchronisation. Elles seront d'abord envoyées au Sheet. Continuer ?`)) return;
+  }
+  setSyncing(true, 'Rechargement complet…');
+  showToast('Rechargement complet depuis Google Sheets…', 'info');
+  try {
+    await ensureSheets();
+    // Envoyer les saisies locales en attente (pour ne rien perdre)
+    if (pendingWrites.length) await pushPending();
+    // Purger l'état local dérivé pour forcer une reconstruction intégrale depuis le Sheet
+    updates = {};
+    newItems = [];
+    UPDATES_INDEX = {};
+    UPDATES_PHOTOS_CACHE = {};
+    INVENTAIRE_INDEX_BUILT = false;
+    invalidateAllItemsCache();
+    invalidateCbeIndex();
+    invalidateStatsCache();
+    invalidateTabSheetIds();
+    // Relecture intégrale
+    await pullAll();
+    lastSync = Date.now();
+    saveLocal();
+    saveDBCache();
+    refreshCurrentView();
+    renderDataStatus();
+    updateBadge('ok');
+    showToast('Données rechargées — l\'affichage reflète maintenant le contenu du Sheet', 'success');
+  } catch(err) {
+    showToast('Erreur rechargement: ' + err.message, 'danger');
+    console.error(err);
+  }
+  setSyncing(false);
+}
+
 // Rafraîchir la vue actuelle sans changer d'onglet
 function refreshCurrentView() {
   // Si une modale est ouverte, ne rien rafraîchir derrière (éviter perte de saisie)
@@ -2377,6 +2418,8 @@ function renderSidebarActions() {
   const el = document.getElementById('sidebar-admin-btns');
   if (!el) return;
   let html = '';
+  // Rechargement complet : disponible pour tous (action de lecture sûre)
+  html += '<button class="btn btn-block btn-soft-accent" onclick="closeSidebar();forceReloadFromSheet()"><i class="ti ti-cloud-download"></i> Recharger depuis Sheets</button>';
   if (can('canSuivi')) html += '<button class="btn btn-block" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi des sites</button>';
   if (can('canExport')) html += '<button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>';
   if (can('canReset')) html += '<button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>';
@@ -2787,6 +2830,13 @@ function renderTable() {
     if (filt && (updates[r.cbi]?.serv || r.serv) !== filt) return false;
     return true;
   });
+  // Trier par code barre IMMO (numérique si possible, sinon alphabétique)
+  f.sort((a, b) => {
+    const ca = (a.cbi || ''), cb = (b.cbi || '');
+    const na = parseInt(ca, 10), nb = parseInt(cb, 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return ca.localeCompare(cb, 'fr', { numeric: true, sensitivity: 'base' });
+  });
   const tw = document.getElementById('twrap');
   if (!tw) return;
   if (!f.length) { tw.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">Aucun article</div>'; return; }
@@ -2798,7 +2848,10 @@ function renderTable() {
       const sc = sv === 'EN SERVICE' ? 'b-service' : sv === 'HORS SERVICE' ? 'b-hors' : 'b-rebut';
       const tr = u.trouve || '';
       const trBadge = tr === 'OUI' ? '<span style="font-size:11px;color:var(--success-txt);font-weight:700">✓</span>' : tr === 'NON' ? '<span style="font-size:11px;color:var(--danger-txt);font-weight:700">✗</span>' : '';
-      return `<div class="t-row${ok ? ' inventoried' : ''}" onclick="openEditItem_cbi('${esc(r.cbi)}')"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.cbi)}${r._new ? ` <span class="badge b-new" style="font-size:10px">Nouveau</span>` : ''}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${esc(r.art)}</div><div class="txt-12-muted">${esc(r.fam)}${trBadge ? ' · ' + trBadge : ''}</div></div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok ? '<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>' : '<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi] || []).length ? '<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>' : ''}</div></div>`;
+      // Nom de l'inventoriste (opérateur) qui a traité l'article
+      const inv = u.by ? (USER_NAMES[(u.by || '').toLowerCase()] || u.by) : '';
+      const invLine = inv ? `<div class="txt-12-muted" style="display:flex;align-items:center;gap:3px;margin-top:1px"><i class="ti ti-user" style="font-size:10px"></i>${esc(inv)}</div>` : '';
+      return `<div class="t-row${ok ? ' inventoried' : ''}" onclick="openEditItem_cbi('${esc(r.cbi)}')"><div class="col-cbi" style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.cbi)}${r._new ? ` <span class="badge b-new" style="font-size:10px">Nouveau</span>` : ''}</div><div style="overflow:hidden"><div style="font-weight:${ok ? 700 : 400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${esc(r.art)}</div><div class="txt-12-muted">${esc(r.fam)}${trBadge ? ' · ' + trBadge : ''}</div>${invLine}</div><div><span class="badge ${sc}" style="font-size:11px">${sv}</span></div><div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px">${ok ? '<i class="ti ti-check" style="color:var(--success-txt);font-size:18px"></i>' : '<i class="ti ti-circle" style="color:var(--border2);font-size:16px"></i>'}${(photos[r.cbi] || []).length ? '<i class="ti ti-camera" style="font-size:11px;color:var(--info-txt)"></i>' : ''}</div></div>`;
     }).join('')}
   </div>`;
 }
@@ -4799,14 +4852,17 @@ function refreshArticleDatalist(famVal) {
   dl.innerHTML = opts.join('');
 }
 function checkCbiField(inp) { const cbi = inp.value.trim(); const msg = document.getElementById('n-cbi-msg'); if (!cbi || !msg) return; const exist = findItemByCbi(cbi); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà existant : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
-function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = findItemByCbe(cbe); if (exist) { inp.style.borderColor = 'var(--danger-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--danger-txt)'; msg.innerHTML = '⚠ Déjà attribué : ' + exist.art + ' (' + exist.bureau + ')'; } else { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--success-txt)'; msg.textContent = '✓ Code barre disponible'; } }
+function checkCbeField(inp) { const cbe = inp.value.trim(); const msg = document.getElementById('n-cbe-msg'); if (!cbe || !msg) return; const exist = findItemByCbe(cbe); if (exist) { inp.style.borderColor = 'var(--success-txt)'; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--text2)'; msg.innerHTML = '<i class="ti ti-map-pin" style="font-size:11px"></i> Emplacement : ' + esc(exist.bureau) + ' (' + esc(exist.bat) + ')'; } else { inp.style.borderColor = ''; msg.style.cssText = 'font-size:11px;margin-top:-6px;margin-bottom:4px;display:block;color:var(--text3)'; msg.textContent = 'Nouveau code barre emplacement'; } }
 async function saveNew() {
   const cbi = document.getElementById('n-cbi').value.trim();
   const cbe = document.getElementById('n-cbe').value.trim();
   if (!cbi) { showToast('Code barre IMMO requis', 'warn'); return; }
   const existCbi = findItemByCbi(cbi);
   if (existCbi) { showDoublonModal('cbi', existCbi); return; }
-  if (cbe) { const existCbe = findItemByCbe(cbe); if (existCbe) { showDoublonModal('cbe', existCbe); return; } }
+  // NB : le CBE (code barre emplacement) est PARTAGÉ entre tous les articles d'un même bureau.
+  // On ne bloque donc PAS si le CBE existe déjà — c'est le comportement normal d'ajouter
+  // un article sur un emplacement existant. L'unicité du CBE est contrôlée uniquement
+  // à la création/modification d'un emplacement (findCbeConflict).
 
   const famNom = document.getElementById('n-fam').value.trim();
   const artNom = document.getElementById('n-art').value.trim();
