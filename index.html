@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 13.1 -->
+<!-- VERSION 13.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -42,7 +42,7 @@
   if (!('serviceWorker' in navigator)) return;
   // La version du cache est liée à la version de l'app (voir APP_VERSION).
   // Changer la version invalide automatiquement l'ancien cache → mise à jour propre.
-  const APP_VER = 'inv-v13-1';
+  const APP_VER = 'inv-v13-2';
   const swCode = `
     const CACHE = '${APP_VER}';
     self.addEventListener('install', e => { self.skipWaiting(); });
@@ -580,7 +580,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 13.1</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 13.2</button>
         </div>
       </div>
     </div>
@@ -833,6 +833,8 @@ let UPDATES_PHOTOS_CACHE = {};  // cbi → URL photos déjà en feuille
 // Index relationnels (chargés depuis les tables référentielles)
 let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
+// Statut de clôture par bureau : { "site|bat|etage|bureau": { closed: true/false, by, ts } }
+let bureauStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 let gsConf = { clientId: APP_CLIENT_ID, sheetId: APP_SHEET_ID };
 // drillState/progressFilter remplacés par UF.dashFilter/UF.dashSiteFilter/UF.dashSearch (déclarés plus bas)
@@ -942,7 +944,7 @@ function safeLocalSet(key, value) {
 }
 
 function saveLocal() {
-  safeLocalSet(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, pw: pendingWrites, t: Date.now() }));
+  safeLocalSet(SK, JSON.stringify({ u: updates, ni: newItems, nl: newLocs, ss: siteStatuts, bs: bureauStatuts, pw: pendingWrites, t: Date.now() }));
 }
 function loadLocal() {
   try {
@@ -951,6 +953,7 @@ function loadLocal() {
     newItems = d.ni || [];
     newLocs = d.nl || [];
     siteStatuts = d.ss || {};
+    bureauStatuts = d.bs || {};
     pendingWrites = d.pw || [];  // Restaurer la file d'attente d'écritures hors-ligne
   } catch(e) {}
 }
@@ -1409,14 +1412,15 @@ async function ensureSheets() {
   // Alimenter le cache des sheetId au passage
   _TAB_SHEET_IDS = {};
   for (const s of meta.sheets) _TAB_SHEET_IDS[s.properties.title] = s.properties.sheetId;
-  const needed = ['Updates', 'NouveauxArticles', 'SuiviSites', 'ActivityLog'].filter(s => !exist.includes(s));
+  const needed = ['Updates', 'NouveauxArticles', 'SuiviSites', 'ActivityLog', 'BureauStatuts'].filter(s => !exist.includes(s));
   if (needed.length) {
     await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}:batchUpdate`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: needed.map(t => ({ addSheet: { properties: { title: t } } })) }) });
     const hMap = {
       'Updates': ['cbi','emp_id','cbe','site','batiment','etage','bureau','article','etat_service','etat_renouvelabilite','observation','trouve','photos','by','ts','criteres','marque','modele','serie','num_amendis'],
       'NouveauxArticles': ['cbi','cbe_scan','emp_id','article_id','marque','modele','serie','quantite','etat_service','etat_renouvelabilite','observation','by','ts'],
       'SuiviSites': ['site_id','statut','date_debut','date_fin','inventoriste','observation','maj_par','maj_le'],
-      'ActivityLog': ['timestamp','user','action','details','target']
+      'ActivityLog': ['timestamp','user','action','details','target'],
+      'BureauStatuts': ['cle','site','batiment','etage','bureau','statut','par','le']
     };
     for (const s of needed) await sPut(`${s}!A1`, [hMap[s]]);
     invalidateTabSheetIds(); // les nouveaux onglets ont changé la structure
@@ -1430,7 +1434,7 @@ async function pullAll() {
   if (!gTok) return;
   try {
     // Charger tous les référentiels en parallèle
-    const [sitesData, batsData, empsData, famsData, artsData, invData, updData, niData, suiviData] = await Promise.all([
+    const [sitesData, batsData, empsData, famsData, artsData, invData, updData, niData, suiviData, bureauStatData] = await Promise.all([
       sGet('Sites!A2:C'),
       sGet('Batiments!A2:G'),
       sGet('Emplacements!A2:G'),
@@ -1439,7 +1443,8 @@ async function pullAll() {
       sGet('Inventaire!A2:L'),
       sGet('Updates!A2:T'),
       sGet('NouveauxArticles!A2:M'),
-      sGet('SuiviSites!A2:H')
+      sGet('SuiviSites!A2:H'),
+      sGet('BureauStatuts!A2:H').catch(() => ({ values: [] }))
     ]);
 
     // Construire les index par ID
@@ -1611,6 +1616,24 @@ async function pullAll() {
           by: by || '', dateMaj: ts || ''
         };
       }
+    }
+
+    // Statuts de clôture par bureau (feuille BureauStatuts)
+    // On préserve les statuts locaux en attente (non encore poussés) pour ne pas les écraser
+    const pendingBsKeys = new Set(pendingWrites.filter(w => w.type === 'bs').map(w => bureauKey(w.d.site, w.d.bat, w.d.etage, w.d.bureau)));
+    const remoteBureauStatuts = {};
+    for (const r of (bureauStatData.values || [])) {
+      const [cle, site, bat, etage, bureau, statut, par, le] = r;
+      if (!cle) continue;
+      remoteBureauStatuts[cle] = {
+        closed: (statut === 'CLOTURE'),
+        by: par || '',
+        ts: le ? new Date(le).getTime() : 0
+      };
+    }
+    // Fusionner : le distant fait foi, sauf pour les clés en attente locale
+    for (const k in remoteBureauStatuts) {
+      if (!pendingBsKeys.has(k)) bureauStatuts[k] = remoteBureauStatuts[k];
     }
 
     buildHier();
@@ -2058,6 +2081,7 @@ function renderActivityList() {
       'ADD': ['ADD_ITEM', 'ADD_LOCATION', 'ADD_REF_ARTICLE', 'ADD_FAMILLE'],
       'EDIT': ['EDIT_LOCATION', 'EDIT_ITEM'],
       'DELETE': ['DELETE_LOCATION', 'DELETE_REF_ARTICLE'],
+      'CLOTURE': ['CLOTURE_BUREAU', 'REOUVERTURE_BUREAU'],
       'EXPORT': ['EXPORT', 'EXPORT_FINAL'],
       'RESET': ['RESET']
     };
@@ -2094,6 +2118,8 @@ function renderActivityList() {
     'EDIT_ITEM': { icon: 'ti-edit', color: 'var(--warn-txt)', label: 'Modification article' },
     'DELETE_LOCATION': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Suppression emplacement' },
     'DELETE_REF_ARTICLE': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Suppression article' },
+    'CLOTURE_BUREAU': { icon: 'ti-lock-check', color: 'var(--success-txt)', label: 'Clôture inventaire' },
+    'REOUVERTURE_BUREAU': { icon: 'ti-lock-open', color: 'var(--warn-txt)', label: 'Réouverture inventaire' },
     'EXPORT': { icon: 'ti-file-export', color: 'var(--accent)', label: 'Export' },
     'EXPORT_FINAL': { icon: 'ti-table-export', color: 'var(--accent)', label: 'Export final' },
     'RESET': { icon: 'ti-trash', color: 'var(--danger-txt)', label: 'Réinitialisation' }
@@ -2131,6 +2157,7 @@ async function pushPending() {
   if (!pendingWrites.length) return;
   const upd = pendingWrites.filter(p => p.type === 'u');
   const ni = pendingWrites.filter(p => p.type === 'ni');
+  const bs = pendingWrites.filter(p => p.type === 'bs');
   let done = 0;
   try {
     // Mises à jour : utiliser writeUpd (upsert + 20 colonnes A:T) pour chaque CBI
@@ -2145,6 +2172,12 @@ async function pushPending() {
     if (ni.length) {
       await sAppend('NouveauxArticles', ni.map(p => { const r = p.d; return [r.cbi, r.cbe || '', r.emp_id || '', r.article_id || '', r.marque || '', r.modele || '', r.serie || '', r.qty, r.serv, r.renouv, r.obs || '', r._addedBy, new Date(r._addedAt).toISOString()]; }));
       done += ni.length;
+    }
+    // Statuts de clôture de bureau (upsert par clé)
+    for (const p of bs) {
+      const b = p.d;
+      await writeBureauStatut(b.site, b.bat, b.etage, b.bureau, b.closed, b.ts);
+      done++;
     }
     pendingWrites = [];
     saveLocal();
@@ -2259,6 +2292,7 @@ async function forceReloadFromSheet() {
     // Purger l'état local dérivé pour forcer une reconstruction intégrale depuis le Sheet
     updates = {};
     newItems = [];
+    bureauStatuts = {};
     UPDATES_INDEX = {};
     UPDATES_PHOTOS_CACHE = {};
     INVENTAIRE_INDEX_BUILT = false;
@@ -2599,6 +2633,10 @@ function renderMain() {
   const barColor = pct === 100 ? 'var(--success-txt)' : pct > 50 ? 'var(--warn-txt)' : 'var(--accent)';
 
   const curCbe = getCbeFromLoc(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
+  const closed = isBureauClosed(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau);
+  const closeInfo = bureauStatuts[bureauKey(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau)] || {};
+  const closeByName = closeInfo.by ? (USER_NAMES[(closeInfo.by || '').toLowerCase()] || closeInfo.by) : '';
+  const closeDate = closeInfo.ts ? new Date(closeInfo.ts).toLocaleDateString('fr-FR') : '';
 
   main.innerHTML = `
     <!-- Bandeau emplacement actuel -->
@@ -2610,7 +2648,7 @@ function renderMain() {
           <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(curLoc.site)} › ${esc(curLoc.bat)} › ${esc(curLoc.etage)}</div>
           ${curCbe ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:11px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:3px 8px;border-radius:8px"><i class="ti ti-barcode" style="font-size:12px"></i>${esc(curCbe)}</div>` : ''}
         </div>
-        ${can('canEditLocation') ? `<button class="btn btn-sm" onclick="openEditLocation('${esc(curLoc.site)}','${esc(curLoc.bat)}','${esc(curLoc.etage)}','${esc(curLoc.bureau)}')" title="Modifier cet emplacement" style="min-height:36px;padding:0 10px"><i class="ti ti-edit" style="font-size:16px"></i></button>` : ''}
+        ${can('canEditLocation') && !closed ? `<button class="btn btn-sm" onclick="openEditLocation('${esc(curLoc.site)}','${esc(curLoc.bat)}','${esc(curLoc.etage)}','${esc(curLoc.bureau)}')" title="Modifier cet emplacement" style="min-height:36px;padding:0 10px"><i class="ti ti-edit" style="font-size:16px"></i></button>` : ''}
         <div style="text-align:right">
           <div style="font-size:24px;font-weight:800;color:${barColor};letter-spacing:-.02em">${pct}<span style="font-size:14px;font-weight:600">%</span></div>
           <div class="txt-xs">${inv}/${items.length}</div>
@@ -2619,6 +2657,19 @@ function renderMain() {
       <div class="pbar" style="height:8px;border-radius:4px"><div class="pbar-fill" style="width:${pct}%;border-radius:4px;background:${barColor}"></div></div>
     </div>
 
+    ${closed ? `
+    <!-- Bandeau : inventaire clôturé -->
+    <div style="background:var(--success-bg);border:1px solid var(--success-ring);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <i class="ti ti-lock-check" style="font-size:24px;color:var(--success-txt)"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:var(--success-txt)">Inventaire clôturé</div>
+        <div style="font-size:12px;color:var(--text2)">${closeByName ? `Par ${esc(closeByName)}` : ''}${closeDate ? ` le ${closeDate}` : ''} — modifications verrouillées</div>
+      </div>
+      <button class="btn btn-sm btn-soft-accent" onclick="reopenBureauInventory()"><i class="ti ti-lock-open"></i> Rouvrir</button>
+    </div>
+    ` : ''}
+
+    ${!closed ? `
     <!-- Zone de scan avec indicateurs 3 cas -->
     <label class="scan-zone" for="scan-inp">
       <i class="ti ti-scan"></i>
@@ -2630,6 +2681,7 @@ function renderMain() {
       <span style="display:inline-flex;align-items:center;gap:4px;color:var(--warn-txt);background:var(--warn-bg);padding:3px 8px;border-radius:8px"><i class="ti ti-transfer" style="font-size:11px"></i> Article ailleurs → Transfert</span>
       <span style="display:inline-flex;align-items:center;gap:4px;color:var(--text2);background:var(--bg2);padding:3px 8px;border-radius:8px"><i class="ti ti-alert-circle" style="font-size:11px"></i> Inconnu → Bouton "Ajouter"</span>
     </div>
+    ` : ''}
 
     <!-- Recherche et filtre -->
     <div class="search-row">
@@ -2641,11 +2693,19 @@ function renderMain() {
         <option value="HORS SERVICE">Hors service</option>
         <option value="A METTRE AU REBUT">À rebut</option>
       </select>
-      <button class="btn btn-primary btn-sm" onclick="openAddItem()" title="Ajouter un article manuellement"><i class="ti ti-plus"></i> Ajouter</button>
+      ${!closed ? `<button class="btn btn-primary btn-sm" onclick="openAddItem()" title="Ajouter un article manuellement"><i class="ti ti-plus"></i> Ajouter</button>` : ''}
     </div>
 
     <!-- Conteneur de la table -->
     <div id="twrap"></div>
+
+    ${!closed ? `
+    <!-- Bouton de clôture en bas -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <button class="btn btn-success btn-block" onclick="closeBureauInventory()"><i class="ti ti-lock-check"></i> Clôturer l'inventaire de ce bureau</button>
+      <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px">Une fois clôturé, il faudra rouvrir pour modifier</div>
+    </div>
+    ` : ''}
   `;
 
   renderTable();
@@ -3655,12 +3715,75 @@ function setLocEtageFilter(e) {
   renderLocationsView();
 }
 
+// ─── CLÔTURE D'INVENTAIRE PAR BUREAU ─────────────────────────
+// Clé normalisée d'un bureau
+function bureauKey(site, bat, etage, bureau) { return `${site}|${bat}|${etage}|${bureau}`; }
+// Un bureau est-il clôturé ?
+function isBureauClosed(site, bat, etage, bureau) {
+  const k = bureauKey(site, bat, etage, bureau);
+  return !!(bureauStatuts[k] && bureauStatuts[k].closed);
+}
+// Clôturer ou rouvrir un bureau (persisté dans la feuille BureauStatuts)
+async function setBureauClosed(site, bat, etage, bureau, closed) {
+  const k = bureauKey(site, bat, etage, bureau);
+  const ts = Date.now();
+  bureauStatuts[k] = { closed: !!closed, by: currentUser || '', ts };
+  saveLocal();
+  // Écriture distante (best-effort, file d'attente si hors-ligne)
+  if (gTok && navigator.onLine) {
+    try { await writeBureauStatut(site, bat, etage, bureau, closed, ts); }
+    catch(e) { pendingWrites.push({ type: 'bs', d: { site, bat, etage, bureau, closed, ts, by: currentUser || '' } }); saveLocal(); }
+  } else {
+    pendingWrites.push({ type: 'bs', d: { site, bat, etage, bureau, closed, ts, by: currentUser || '' } });
+    saveLocal();
+    renderPendingIndicator();
+  }
+}
+// Écrit une ligne dans la feuille BureauStatuts (upsert par clé)
+async function writeBureauStatut(site, bat, etage, bureau, closed, ts) {
+  const k = bureauKey(site, bat, etage, bureau);
+  const row = [k, site, bat, etage, bureau, closed ? 'CLOTURE' : 'OUVERT', currentUser || '', new Date(ts || Date.now()).toISOString()];
+  const d = await sGet('BureauStatuts!A2:A');
+  const keys = (d.values || []).map(r => r[0]);
+  const idx = keys.indexOf(k);
+  if (idx >= 0) await sPut(`BureauStatuts!A${idx + 2}:H${idx + 2}`, [row]);
+  else await sAppend('BureauStatuts', [row]);
+}
+
 // Statut d'un bureau d'après son avancement
 function getBureauDashStatut(stats) {
   if (!stats.total) return 'VIDE';
   if (stats.pct === 100) return 'TERMINE';
   if (stats.pct > 0) return 'EN COURS';
   return 'NON TRAITE';
+}
+
+// Action : clôturer l'inventaire du bureau courant
+async function closeBureauInventory() {
+  const { site, bat, etage, bureau } = curLoc;
+  if (!bureau) return;
+  const items = getItems();
+  const inv = items.filter(r => updates[r.cbi]).length;
+  const reste = items.length - inv;
+  let msg = `Clôturer l'inventaire de « ${bureau} » ?\n\n`;
+  if (reste > 0) msg += `⚠ ${reste} article(s) ne sont pas encore mis à jour.\n\n`;
+  msg += `Une fois clôturé, plus aucune modification ni ajout ne sera possible sur ce bureau sans le rouvrir.`;
+  if (!confirm(msg)) return;
+  await setBureauClosed(site, bat, etage, bureau, true);
+  showToast(`Inventaire de « ${bureau} » clôturé`, 'success');
+  logActivity('CLOTURE_BUREAU', `${site} › ${bat} › ${etage} › ${bureau}`, bureauKey(site, bat, etage, bureau));
+  renderMain();
+}
+
+// Action : rouvrir l'inventaire du bureau courant
+async function reopenBureauInventory() {
+  const { site, bat, etage, bureau } = curLoc;
+  if (!bureau) return;
+  if (!confirm(`Rouvrir l'inventaire de « ${bureau} » ?\n\nLes modifications et ajouts redeviendront possibles.`)) return;
+  await setBureauClosed(site, bat, etage, bureau, false);
+  showToast(`Inventaire de « ${bureau} » rouvert`, 'info');
+  logActivity('REOUVERTURE_BUREAU', `${site} › ${bat} › ${etage} › ${bureau}`, bureauKey(site, bat, etage, bureau));
+  renderMain();
 }
 
 // Construire la liste de tous les bureaux avec leurs stats
@@ -3674,7 +3797,8 @@ function buildDashBureauData() {
           // Inclure aussi les bureaux vides (0 article) — ils apparaîtront en "À INVENTORIER"
           const statut = getBureauDashStatut(stats);
           const info = getBureauLastInfo(site, bat, etage, bureau);
-          data.push({ site, bat, etage, bureau, stats, statut, lastTs: info.lastTs, lastBy: info.lastBy });
+          const closed = isBureauClosed(site, bat, etage, bureau);
+          data.push({ site, bat, etage, bureau, stats, statut, closed, lastTs: info.lastTs, lastBy: info.lastBy });
         }
       }
     }
@@ -3858,6 +3982,7 @@ function dashBureauCard(b) {
         ${cbeStr ? `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:10px;font-weight:600;background:var(--accent-bg);color:var(--accent);padding:2px 6px;border-radius:6px"><i class="ti ti-barcode" style="font-size:10px"></i>${esc(cbeStr)}</div>` : ''}
       </div>
       <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${statutBg};color:${statutColor};white-space:nowrap">${statutDisplay}</span>
+      ${b.closed ? `<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:var(--success-bg);color:var(--success-txt);white-space:nowrap"><i class="ti ti-lock-check" style="font-size:11px"></i> CLÔTURÉ</span>` : ''}
       <div style="text-align:right">
         <div style="font-size:16px;font-weight:800;color:${pctColor}">${b.stats.pct}%</div>
         <div style="font-size:10px;color:var(--text3)">${b.stats.inv}/${b.stats.total}</div>
@@ -4098,6 +4223,11 @@ function showCodeNotFoundModal(scannedCode) {
 // ─────────────────────────────────────────────────────────────
 
 function openTransferModal(item) {
+  // Verrouillage : le transfert ajoute l'article au bureau courant (destination)
+  if (isBureauClosed(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau)) {
+    showToast('Inventaire clôturé — rouvrez le bureau pour effectuer un transfert', 'warn');
+    return;
+  }
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE';
   const rv = u.renouv || item.renouv || 'BON';
@@ -4361,6 +4491,11 @@ async function confirmTransferAndUpdate(cbi) {
 // ---------- EDIT/ADD ITEMS ----------
 function openEditItem_cbi(cbi) { const i = findItemByCbi(cbi); if (i) openEditItem(i); }
 function openEditItem(item) {
+  // Verrouillage : si le bureau de l'article est clôturé, modification impossible
+  if (isBureauClosed(item.site, item.bat, item.etage, item.bureau)) {
+    showToast('Inventaire clôturé — rouvrez le bureau pour modifier', 'warn');
+    return;
+  }
   const u = updates[item.cbi] || {};
   const sv = u.serv || item.serv || 'EN SERVICE', rv = u.renouv || item.renouv || 'BON';
   // Observation d'origine (depuis Inventaire) — lecture seule
@@ -4653,6 +4788,11 @@ async function updateInventoryRow(item) {
   await sPut(`Inventaire!B${idx + 2}:G${idx + 2}`, [[item.article_id || '', item.emp_id || '', item.marque || '', item.modele || '', item.serie || '', item.prod || '']]);
 }
 function openAddItem(prefilledCode) {
+  // Verrouillage : ajout impossible sur un bureau clôturé
+  if (curLoc.bureau && isBureauClosed(curLoc.site, curLoc.bat, curLoc.etage, curLoc.bureau)) {
+    showToast('Inventaire clôturé — rouvrez le bureau pour ajouter un article', 'warn');
+    return;
+  }
   const fams = Object.keys(FAMS).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   if (!fams.length) { showToast("Chargez d'abord les données", 'warn'); return; }
   // Si un code est fourni, déterminer si c'est CBI ou CBE selon le préfixe
