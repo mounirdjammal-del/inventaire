@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 13.2 -->
+<!-- VERSION 13.5 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -42,7 +42,7 @@
   if (!('serviceWorker' in navigator)) return;
   // La version du cache est liée à la version de l'app (voir APP_VERSION).
   // Changer la version invalide automatiquement l'ancien cache → mise à jour propre.
-  const APP_VER = 'inv-v13-2';
+  const APP_VER = 'inv-v13-5';
   const swCode = `
     const CACHE = '${APP_VER}';
     self.addEventListener('install', e => { self.skipWaiting(); });
@@ -580,7 +580,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 13.2</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 13.5</button>
         </div>
       </div>
     </div>
@@ -605,6 +605,8 @@ function esc(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[m]));
 }
+// Raccourci DOM : $('id') === document.getElementById('id')
+const $ = id => document.getElementById(id);
 
 // ---------- CONFIGURATION ----------
 const APP_CLIENT_ID = '248823469190-sumu3o7c0ttd3gfd0lmat9csrro9pc2s.apps.googleusercontent.com';
@@ -862,6 +864,7 @@ function showToast(msg, type = 'info') {
 function showModal(html) {
   // Modale verrouillée : pas de fermeture sur clic en dehors. Seul le bouton ✕ ou Annuler ferme.
   document.getElementById('modal').innerHTML = `<div class="modal-overlay"><div class="modal">${html}</div></div>`;
+  pushHistoryState(); // le bouton retour fermera la modale au lieu de quitter
 }
 
 // Bannière "nouvelle version disponible" — affichée quand le Service Worker détecte une mise à jour
@@ -917,8 +920,17 @@ function checkForUpdate() {
     window.location.reload();
   }
 }
+let _closingViaBack = false;   // vrai quand la fermeture vient du bouton retour physique
+let _suppressNextPop = false;  // ignore le prochain popstate (déclenché par closeModal)
 function closeModal() {
+  const hadModal = document.getElementById('modal').innerHTML.trim() !== '';
   document.getElementById('modal').innerHTML = '';
+  // Si la modale était ouverte et a été fermée manuellement (bouton ✕/Annuler),
+  // dépiler l'état d'historique correspondant pour garder la pile cohérente.
+  if (hadModal && _historyReady && !_closingViaBack) { // _historyReady défini plus bas (runtime OK)
+    _suppressNextPop = true;
+    history.back();
+  }
 }
 
 // Écriture localStorage sécurisée : ne crashe jamais en cas de quota dépassé.
@@ -1055,7 +1067,7 @@ async function flushQueuedPhotos() {
   for (const q of queued) {
     try {
       const file = new File([q.blob], `offline_${q.cbi}_${q.photoIndex}.jpg`, { type: q.blob.type || 'image/jpeg' });
-      const result = await uploadPhotoToDrive(file, q.cbi, q.photoIndex);
+      const result = await uploadPhotoToDrive(file, q.cbi, q.photoIndex, true);
       if (!photos[q.cbi]) photos[q.cbi] = [];
       // Retirer l'entrée "pending" correspondante (preview locale)
       photos[q.cbi] = photos[q.cbi].filter(p => !(p.pending && p.name === `offline_${q.photoIndex}.jpg`));
@@ -1651,14 +1663,21 @@ async function pullAll() {
 // ─────────────────────────────────────────────────────────────
 //  HELPERS RELATIONNELS
 // ─────────────────────────────────────────────────────────────
-function findEmpIdByLocation(site_code, bat_nom, etage, bureau) {
+// Index O(1) localisation → emp_id (évite de parcourir tous les emplacements à chaque appel)
+let _EMP_LOC_INDEX = null;
+function _buildEmpLocIndex() {
+  _EMP_LOC_INDEX = {};
   for (const eid in REL_EMPS) {
     const e = REL_EMPS[eid];
     const sCode = (REL_SITES[e.site_id] || {}).site_code;
     const bNom = (REL_BATS[e.bat_id] || {}).bat_nom;
-    if (sCode === site_code && bNom === bat_nom && e.etage === etage && e.bureau === bureau) return eid;
+    if (sCode && bNom) _EMP_LOC_INDEX[`${sCode}|${bNom}|${e.etage}|${e.bureau}`] = eid;
   }
-  return null;
+}
+function findEmpIdByLocation(site_code, bat_nom, etage, bureau) {
+  if (!_EMP_LOC_INDEX) _buildEmpLocIndex();
+  const hit = _EMP_LOC_INDEX[`${site_code}|${bat_nom}|${etage}|${bureau}`];
+  return hit !== undefined ? hit : null;
 }
 function findArticleIdByName(article_nom) {
   for (const aid in REL_ARTS) {
@@ -1692,7 +1711,7 @@ function getCbeFromLoc(site, bat, etage, bureau) {
   if (!_EMP_CBE_INDEX) _buildEmpCbeIndex();
   return _EMP_CBE_INDEX[`${site}|${bat}|${etage}|${bureau}`] || '';
 }
-function invalidateCbeIndex() { _EMP_CBE_INDEX = null; }
+function invalidateCbeIndex() { _EMP_CBE_INDEX = null; _EMP_LOC_INDEX = null; }
 
 // Vérifie si un CBE est déjà utilisé par un AUTRE emplacement (exclut emp_id donné)
 // Retourne l'emplacement en conflit, ou null si le CBE est libre
@@ -2493,7 +2512,67 @@ function goView(view) {
     renderDashboard();  // Pas de reset auto — UF est persistant
   }
 }
-function goViewData(el) { goView(el.dataset.view); }
+function goViewData(el) { goView(el.dataset.view); pushHistoryState(); }
+
+// ─── GESTION DU BOUTON RETOUR (Android / navigateur) ─────────
+// Empêche la fermeture/déconnexion de l'app au bouton retour en gérant
+// une pile d'historique interne. Le retour navigue dans l'app au lieu de quitter.
+let _historyReady = false;
+function initBackButton() {
+  if (_historyReady) return;
+  _historyReady = true;
+  // État initial : on pousse un état "sentinelle" pour avoir toujours quelque chose à dépiler
+  history.replaceState({ app: true, level: 0 }, '');
+  history.pushState({ app: true, level: 1 }, '');
+  window.addEventListener('popstate', handleBackButton);
+}
+// Pousse un nouvel état dans l'historique (à chaque navigation avant)
+function pushHistoryState() {
+  if (!_historyReady) return;
+  history.pushState({ app: true, level: 2 }, '');
+}
+function handleBackButton(e) {
+  // Si ce popstate a été déclenché par closeModal (fermeture manuelle), l'ignorer
+  if (_suppressNextPop) { _suppressNextPop = false; return; }
+  // 1. Si une modale est ouverte → la fermer (ne pas quitter)
+  const modal = document.getElementById('modal');
+  if (modal && modal.innerHTML.trim() !== '') {
+    _closingViaBack = true;
+    closeModal();
+    _closingViaBack = false;
+    return;
+  }
+  // 2. Si la sidebar est ouverte → la fermer
+  const sb = document.getElementById('sidebar');
+  if (sb && sb.classList.contains('open')) {
+    closeSidebar();
+    history.pushState({ app: true, level: 2 }, '');
+    return;
+  }
+  // 3. Si on est dans un bureau sélectionné (vue inventaire) → revenir à la liste des bureaux
+  if (currentView === 'inventory' && curLoc.bureau) {
+    curLoc = { site: curLoc.site, bat: '', etage: '', bureau: '' };
+    const selBat = document.getElementById('sel-bat'); if (selBat) selBat.value = '';
+    const selEtage = document.getElementById('sel-etage'); if (selEtage) selEtage.value = '';
+    const selBureau = document.getElementById('sel-bureau'); if (selBureau) selBureau.value = '';
+    renderMain();
+    history.pushState({ app: true, level: 2 }, '');
+    return;
+  }
+  // 4. Si on n'est pas sur l'accueil → revenir à l'accueil
+  if (currentView !== 'home') {
+    goView('home');
+    history.pushState({ app: true, level: 2 }, '');
+    return;
+  }
+  // 5. Sur l'accueil : demander confirmation avant de quitter (re-empiler entre-temps)
+  history.pushState({ app: true, level: 1 }, '');
+  if (confirm('Quitter l\'application ?')) {
+    _suppressNextPop = true;
+    history.back();
+    setTimeout(() => history.back(), 50);
+  }
+}
 function renderHome() {
   const main = document.getElementById('main');
   const tot = DB.length + newItems.filter(r => !r._newLoc).length;
@@ -2739,7 +2818,8 @@ function renderInventoryHome() {
       inv: invCount,
       pct: Math.round(invCount / items.length * 100),
       lastTs, lastBy,
-      isComplete: invCount === items.length
+      isComplete: invCount === items.length,
+      closed: isBureauClosed(site, bat, etage, bureau)
     };
   }
 
@@ -2748,8 +2828,10 @@ function renderInventoryHome() {
     if (a.isComplete !== b.isComplete) return a.isComplete ? 1 : -1;
     return b.lastTs - a.lastTs;
   });
-  const enCours = sorted.filter(s => !s.isComplete);
-  const termines = sorted.filter(s => s.isComplete);
+  // 3 catégories : clôturés (priorité), en cours (ouverts non terminés), terminés (ouverts à 100%)
+  const clotures = sorted.filter(s => s.closed);
+  const enCours = sorted.filter(s => !s.closed && !s.isComplete);
+  const termines = sorted.filter(s => !s.closed && s.isComplete);
 
   main.innerHTML = `<div style="padding:4px 0 20px;max-width:700px;margin:0 auto">
     <!-- En-tête -->
@@ -2803,12 +2885,37 @@ function renderInventoryHome() {
       }).join('')}
     </div>` : ''}
 
+    ${clotures.length ? `
+    <!-- Inventaires clôturés -->
+    <details style="margin-bottom:18px" open>
+      <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:12px;list-style:none;font-size:14px;font-weight:700">
+        <i class="ti ti-lock-check" style="color:var(--success-txt)"></i>
+        Clôturés (${clotures.length})
+        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text3)"></i>
+      </summary>
+      ${clotures.slice(0, 30).map(b => {
+        const cbeStr = getCbeFromLoc(b.site, b.bat, b.etage, b.bureau);
+        return `
+        <div class="hier-row clickable" data-site="${esc(b.site)}" data-bat="${esc(b.bat)}" data-etage="${esc(b.etage)}" data-bureau="${esc(b.bureau)}" onclick="resumeInventory(this)" style="cursor:pointer;margin-bottom:6px;background:var(--success-bg);border-color:var(--success-ring)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <i class="ti ti-lock-check" style="color:var(--success-txt);font-size:18px;flex-shrink:0"></i>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700">${esc(b.bureau)}</div>
+              <div class="txt-xs">${esc(b.site)} › ${esc(b.bat)} › ${esc(b.etage)} · ${b.inv}/${b.total} articles</div>
+              ${cbeStr ? `<div style="margin-top:4px;display:inline-flex;align-items:center;gap:4px;font-family:monospace;font-size:10px;font-weight:600;background:var(--success-bg);color:var(--success-txt);padding:2px 6px;border-radius:6px;border:1px solid var(--success-ring)"><i class="ti ti-barcode" style="font-size:10px"></i>${esc(cbeStr)}</div>` : ''}
+            </div>
+            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:var(--success-txt);color:#fff;white-space:nowrap">CLÔTURÉ</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </details>` : ''}
+
     ${termines.length ? `
     <!-- Inventaires terminés (collapsé) -->
     <details style="margin-bottom:18px">
       <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:12px;list-style:none;font-size:14px;font-weight:700">
         <i class="ti ti-circle-check" style="color:var(--success-txt)"></i>
-        Terminés (${termines.length})
+        Terminés, non clôturés (${termines.length})
         <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text3)"></i>
       </summary>
       ${termines.slice(0, 20).map(b => `
@@ -2826,7 +2933,7 @@ function renderInventoryHome() {
       `).join('')}
     </details>` : ''}
 
-    ${(!enCours.length && !termines.length) ? `
+    ${(!enCours.length && !termines.length && !clotures.length) ? `
     <div style="text-align:center;padding:40px 20px;background:var(--bg);border:1px dashed var(--border2);border-radius:var(--radius-lg)">
       <i class="ti ti-clipboard-list" style="font-size:48px;color:var(--text3);display:block;margin-bottom:12px;opacity:.3"></i>
       <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:4px">Aucun inventaire commencé</div>
@@ -3903,7 +4010,8 @@ function renderDashboardList() {
     all: data.length,
     en_cours: data.filter(b => b.statut === 'EN COURS').length,
     non_traite: data.filter(b => b.statut === 'NON TRAITE' || b.statut === 'VIDE').length,
-    termine: data.filter(b => b.statut === 'TERMINE').length
+    termine: data.filter(b => b.statut === 'TERMINE').length,
+    cloture: data.filter(b => b.closed).length
   };
 
   // Filtre par statut
@@ -3911,6 +4019,7 @@ function renderDashboardList() {
   if (UF.dashFilter === 'en_cours') filtered = data.filter(b => b.statut === 'EN COURS');
   else if (UF.dashFilter === 'non_traite') filtered = data.filter(b => b.statut === 'NON TRAITE' || b.statut === 'VIDE');
   else if (UF.dashFilter === 'termine') filtered = data.filter(b => b.statut === 'TERMINE');
+  else if (UF.dashFilter === 'cloture') filtered = data.filter(b => b.closed);
 
   // Filtre par recherche
   if (UF.dashSearch && UF.dashSearch.length >= 2) {
@@ -3944,6 +4053,7 @@ function renderDashboardList() {
       btn('en_cours', 'En cours', 'var(--warn-txt)', 'ti-clock'),
       btn('non_traite', 'Non traités', '#6b7280', 'ti-circle-dashed'),
       btn('termine', 'Terminés', 'var(--success-txt)', 'ti-circle-check'),
+      btn('cloture', 'Clôturés', 'var(--success-txt)', 'ti-lock-check'),
       btn('all', 'Tous', 'var(--accent)', 'ti-layout-grid'),
     ].join('');
   }
@@ -3960,7 +4070,7 @@ function renderDashboardList() {
   }
 
   // Header avec compteur + bouton aller à l'inventaire
-  const statutLabel = { en_cours: 'en cours', non_traite: 'non traités', termine: 'terminés', all: 'au total' }[UF.dashFilter];
+  const statutLabel = { en_cours: 'en cours', non_traite: 'non traités', termine: 'terminés', cloture: 'clôturés', all: 'au total' }[UF.dashFilter];
   const headerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600">
     ${filtered.length} emplacement${filtered.length > 1 ? 's' : ''} ${statutLabel}${UF.dashSiteFilter !== 'all' ? ' à ' + esc(UF.dashSiteFilter) : ''}
   </div>`;
@@ -4144,6 +4254,7 @@ function navigateTo(site, bat, etage, bureau) {
   if (HIER[site] && HIER[site][bat] && HIER[site][bat][etage]) HIER[site][bat][etage].forEach(br => bu.innerHTML += `<option value="${esc(br)}">${esc(br)}</option>`);
   bu.value = bureau; curLoc.bureau = bureau;
   renderMain();
+  if (bureau) pushHistoryState(); // entrer dans un bureau = nouvel état (retour = revenir à la liste)
 }
 function showLocFb(msg, type) {
   const el = document.getElementById('loc-feedback');
@@ -5177,7 +5288,7 @@ async function handlePhotoCapture(event, cbi) {
 }
 async function deletePhoto(cbi, idx) { if (!confirm('Supprimer cette photo ?')) return; const p = photos[cbi] && photos[cbi][idx]; if (p && gTok && p.id) { try { await fetch(`https://www.googleapis.com/drive/v3/files/${p.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${gTok}` } }); } catch(e) {} } photos[cbi].splice(idx, 1); if (!photos[cbi].length) delete photos[cbi]; savePhotos(); await updatePhotosInSheet(cbi); const sec = document.getElementById(`photo-section-${cbi}`); if (sec) sec.outerHTML = renderPhotoSection(cbi); showToast('Photo supprimée', 'success'); }
 async function ensureDriveFolder() { if (driveFolderId) return driveFolderId; const q = encodeURIComponent(`name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`); const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers: { Authorization: `Bearer ${gTok}` } }); if (!r.ok) throw new Error('Drive API inaccessible'); const data = await r.json(); if (data.files && data.files.length) { driveFolderId = data.files[0].id; return driveFolderId; } const cr = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }) }); if (!cr.ok) throw new Error('Impossible de créer le dossier'); const fd = await cr.json(); driveFolderId = fd.id; await fetch(`https://www.googleapis.com/drive/v3/files/${driveFolderId}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return driveFolderId; }
-async function uploadPhotoToDrive(file, cbi, photoIndex) { const folderId = await ensureDriveFolder(); const ext = file.name.split('.').pop() || 'jpg'; const fname = `${cbi}_${photoIndex}_${Date.now()}.${ext}`; const compressed = await compressImage(file, 1200, 0.82); const boundary = 'inv_boundary_' + Date.now(); const meta = JSON.stringify({ name: fname, parents: [folderId] }); const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${compressed.type}\r\n\r\n`; const bodyEnd = `\r\n--${boundary}--`; const blob = new Blob([body, compressed, bodyEnd]); const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: blob }); if (!r.ok) throw new Error('Erreur upload photo'); const fd = await r.json(); await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return { id: fd.id, viewUrl: `https://drive.google.com/file/d/${fd.id}/view`, thumbUrl: `https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`, name: fname }; }
+async function uploadPhotoToDrive(file, cbi, photoIndex, alreadyCompressed) { const folderId = await ensureDriveFolder(); const ext = file.name.split('.').pop() || 'jpg'; const fname = `${cbi}_${photoIndex}_${Date.now()}.${ext}`; const compressed = alreadyCompressed ? file : await compressImage(file, 1200, 0.82); const boundary = 'inv_boundary_' + Date.now(); const meta = JSON.stringify({ name: fname, parents: [folderId] }); const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${compressed.type}\r\n\r\n`; const bodyEnd = `\r\n--${boundary}--`; const blob = new Blob([body, compressed, bodyEnd]); const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: blob }); if (!r.ok) throw new Error('Erreur upload photo'); const fd = await r.json(); await fetch(`https://www.googleapis.com/drive/v3/files/${fd.id}/permissions`, { method: 'POST', headers: { Authorization: `Bearer ${gTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'reader', type: 'anyone' }) }); return { id: fd.id, viewUrl: `https://drive.google.com/file/d/${fd.id}/view`, thumbUrl: `https://drive.google.com/thumbnail?id=${fd.id}&sz=w400`, name: fname }; }
 function compressImage(file, maxW, quality) { return new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { URL.revokeObjectURL(url); const canvas = document.createElement('canvas'); let w = img.width, h = img.height; if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; } canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h); canvas.toBlob(b => res(b), 'image/jpeg', quality); }; img.onerror = rej; img.src = url; }); }
 async function updatePhotosInSheet(cbi) {
   if (!gTok || !gsConf.sheetId) return;
@@ -6014,6 +6125,8 @@ function showAppShell() {
   document.getElementById('sidebar').style.display = 'none';
   // Afficher immédiatement le voyant de connexion (en ligne / hors-ligne)
   renderPendingIndicator();
+  // Activer la gestion du bouton retour (évite la déconnexion au retour Android)
+  initBackButton();
 }
 function init() {
   loadLocal();
