@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 14.0 -->
+<!-- VERSION 14.2 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -147,6 +147,7 @@ function showInstallButton() {
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
@@ -580,7 +581,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 14.0</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 14.2</button>
         </div>
       </div>
     </div>
@@ -1109,25 +1110,129 @@ function restoreToken() {
 function scheduleTokenRefresh(expiresIn) {
   if (refreshTimer) clearTimeout(refreshTimer);
   const delay = Math.max((expiresIn - 120) * 1000, 10000);
-  refreshTimer = setTimeout(() => silentTokenRefresh(), delay);
-}
-function silentTokenRefresh() {
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'display:none;width:0;height:0;position:absolute';
-  iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(window.location.href.split('#')[0])}&response_type=token&scope=https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/drive.file&prompt=none&login_hint=${encodeURIComponent(getStoredEmail())}`;
-  iframe.onload = () => {
+  refreshTimer = setTimeout(async () => {
     try {
-      const hash = iframe.contentWindow.location.hash;
-      if (hash.includes('access_token')) {
-        const p = new URLSearchParams(hash.slice(1));
-        const tok = p.get('access_token');
-        const exp = parseInt(p.get('expires_in') || '3600');
-        if (tok) setToken(tok, exp);
+      await silentTokenRefresh();
+      // succès : setToken a déjà reprogrammé le prochain renouvellement
+    } catch(e) {
+      // Échec du renouvellement proactif : prévenir l'utilisateur (saisies préservées)
+      updateBadge('off');
+      showReconnectBanner();
+    }
+  }, delay);
+}
+// ─── GOOGLE IDENTITY SERVICES (GIS) ──────────────────────────
+// Renouvellement de token fiable via la bibliothèque officielle Google.
+// Beaucoup plus robuste que l'iframe artisanal, notamment sur mobile.
+let _gisTokenClient = null;
+let _gisReady = false;
+function initGisTokenClient() {
+  if (_gisReady) return true;
+  // La bibliothèque GIS est-elle chargée ?
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) return false;
+  try {
+    _gisTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: APP_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+      callback: () => {}, // défini dynamiquement à chaque demande
+    });
+    _gisReady = true;
+    return true;
+  } catch(e) { console.error('Init GIS', e); return false; }
+}
+// Demande un nouveau token via GIS. mode 'silent' = sans interaction (prompt: '').
+function gisRequestToken(silent) {
+  return new Promise((resolve, reject) => {
+    if (!initGisTokenClient()) { reject(new Error('GIS non disponible')); return; }
+    const timer = setTimeout(() => reject(new Error('GIS timeout')), 12000);
+    _gisTokenClient.callback = (resp) => {
+      clearTimeout(timer);
+      if (resp && resp.access_token) {
+        // GIS renvoie expires_in (souvent 3599s)
+        setToken(resp.access_token, resp.expires_in || 3600);
+        resolve();
+      } else {
+        reject(new Error(resp && resp.error ? resp.error : 'Pas de token GIS'));
       }
-    } catch(e) { console.warn('Silent refresh failed'); updateBadge('off'); showToast('Session expirée, reconnectez-vous', 'warn'); }
-    setTimeout(() => iframe.remove(), 1000);
-  };
-  document.body.appendChild(iframe);
+    };
+    try {
+      // prompt: '' → renouvellement silencieux si la session Google est active
+      _gisTokenClient.requestAccessToken({ prompt: silent ? '' : 'consent', login_hint: getStoredEmail() });
+    } catch(e) { clearTimeout(timer); reject(e); }
+  });
+}
+
+function silentTokenRefresh() {
+  return new Promise(async (resolve, reject) => {
+    // 1. Essai prioritaire via GIS (officiel, fiable)
+    try {
+      await gisRequestToken(true);
+      if (gTok) { resolve(); return; }
+    } catch(e) { /* GIS indisponible ou échec → fallback iframe */ }
+
+    // 2. Fallback : ancienne méthode iframe (au cas où GIS ne serait pas chargé)
+    let settled = false;
+    const done = (ok) => { if (settled) return; settled = true; ok ? resolve() : reject(new Error('refresh failed')); };
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'display:none;width:0;height:0;position:absolute';
+    iframe.src = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(window.location.href.split('#')[0])}&response_type=token&scope=https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/drive.file&prompt=none&login_hint=${encodeURIComponent(getStoredEmail())}`;
+    const guard = setTimeout(() => { try { iframe.remove(); } catch(_) {} done(false); }, 8000);
+    iframe.onload = () => {
+      try {
+        const hash = iframe.contentWindow.location.hash;
+        if (hash && hash.includes('access_token')) {
+          const p = new URLSearchParams(hash.slice(1));
+          const tok = p.get('access_token');
+          const exp = parseInt(p.get('expires_in') || '3600');
+          if (tok) { setToken(tok, exp); clearTimeout(guard); setTimeout(() => { try { iframe.remove(); } catch(_) {} }, 500); done(true); return; }
+        }
+        clearTimeout(guard); try { iframe.remove(); } catch(_) {} done(false);
+      } catch(e) {
+        clearTimeout(guard); try { iframe.remove(); } catch(_) {} done(false);
+      }
+    };
+    document.body.appendChild(iframe);
+  });
+}
+// Affiche une bannière de reconnexion non-bloquante (le travail saisi reste sauvegardé)
+function showReconnectBanner() {
+  if (document.getElementById('reconnect-banner')) return;
+  const pending = pendingWrites.length;
+  const div = document.createElement('div');
+  div.id = 'reconnect-banner';
+  div.style.cssText = 'position:fixed;left:0;right:0;bottom:64px;z-index:9998;display:flex;justify-content:center;padding:0 12px;pointer-events:none';
+  div.innerHTML = `<div style="background:var(--warn-bg);border:1px solid var(--warn-ring);color:var(--warn-txt);border-radius:14px;padding:12px 16px;box-shadow:var(--shadow-lg);max-width:440px;width:100%;display:flex;align-items:center;gap:12px;pointer-events:auto">
+    <i class="ti ti-cloud-off" style="font-size:22px;flex-shrink:0"></i>
+    <div style="flex:1;min-width:0;font-size:13px">
+      <div style="font-weight:700">Session Google expirée</div>
+      <div style="color:var(--text2)">${pending ? pending + ' saisie(s) en attente, conservée(s).' : 'Vos saisies sont conservées.'} Reconnectez-vous pour synchroniser.</div>
+    </div>
+    <button class="btn btn-sm btn-primary" style="flex-shrink:0" onclick="reconnectGoogle()"><i class="ti ti-refresh"></i> Reconnecter</button>
+  </div>`;
+  document.body.appendChild(div);
+}
+function hideReconnectBanner() {
+  const b = document.getElementById('reconnect-banner');
+  if (b) b.remove();
+}
+// Reconnexion explicite : relance le flux OAuth, puis synchronise
+async function reconnectGoogle() {
+  hideReconnectBanner();
+  showToast('Reconnexion…', 'info');
+  // 1. Essai silencieux (rapide si la session Google est encore active)
+  try {
+    await silentTokenRefresh();
+    if (gTok) { updateBadge('ok'); showToast('Reconnecté', 'success'); await syncNow(); return; }
+  } catch(e) { /* échec silencieux → demande interactive */ }
+  // 2. Demande interactive via GIS (popup, conserve l'état de l'app — pas de rechargement)
+  try {
+    await gisRequestToken(false);
+    if (gTok) { updateBadge('ok'); showToast('Reconnecté', 'success'); await syncNow(); return; }
+  } catch(e) { /* GIS indisponible → fallback redirection complète */ }
+  // 3. Dernier recours : redirection OAuth complète (la plus fiable, mais recharge la page)
+  try { localStorage.setItem('inv_google_email', getStoredEmail()); } catch(_) {}
+  const redirect = window.location.href.split('#')[0];
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${APP_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=token&scope=https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/drive.file&login_hint=${encodeURIComponent(getStoredEmail())}`;
 }
 async function fetchGoogleProfile() {
   try {
@@ -1300,13 +1405,20 @@ async function apiCall(url, options = {}, attempt = 0) {
   try {
     const r = await fetch(url, options);
     if (r.status === 401) {
-      // Token expiré : tenter un refresh silencieux
-      if (attempt === 0 && typeof silentTokenRefresh === 'function') {
-        try { await silentTokenRefresh(); } catch(e) {}
-        // Retry avec le nouveau token
-        if (options.headers && gTok) options.headers.Authorization = `Bearer ${gTok}`;
-        if (attempt < _RETRY_DELAYS.length) return apiCall(url, options, attempt + 1);
+      // Token expiré : tenter un refresh silencieux une seule fois
+      if (attempt === 0) {
+        let refreshed = false;
+        try { await silentTokenRefresh(); refreshed = !!gTok; } catch(e) { refreshed = false; }
+        if (refreshed) {
+          // Retry avec le nouveau token
+          if (options.headers && gTok) options.headers.Authorization = `Bearer ${gTok}`;
+          hideReconnectBanner();
+          return apiCall(url, options, attempt + 1);
+        }
       }
+      // Le refresh a échoué : prévenir l'utilisateur sans bloquer (saisies déjà protégées)
+      updateBadge('off');
+      showReconnectBanner();
       throw new Error('Session expirée');
     }
     if (r.status === 429 || r.status >= 500) {
@@ -1423,9 +1535,7 @@ async function getTabSheetId(title) {
 function invalidateTabSheetIds() { _TAB_SHEET_IDS = null; }
 
 async function ensureSheets() {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
-  if (!r.ok) throw new Error(`Fichier inaccessible (${r.status})`);
-  const meta = await r.json();
+  const meta = await apiCall(`https://sheets.googleapis.com/v4/spreadsheets/${gsConf.sheetId}`, { headers: { Authorization: `Bearer ${gTok}` } });
   const exist = meta.sheets.map(s => s.properties.title);
   // Alimenter le cache des sheetId au passage
   _TAB_SHEET_IDS = {};
@@ -2366,7 +2476,15 @@ async function syncNow() {
     refreshCurrentView();
     renderDataStatus();
     updateBadge('ok');
-  } catch(err) { showToast('Sync: ' + err.message, 'danger'); }
+  } catch(err) {
+    // Si la session a expiré, la bannière de reconnexion est déjà affichée par apiCall.
+    // On évite alors un toast d'erreur redondant.
+    if (/Session expirée/i.test(err.message)) {
+      updateBadge('off');
+    } else {
+      showToast('Sync: ' + err.message, 'danger');
+    }
+  }
   setSyncing(false);
 }
 
@@ -6240,6 +6358,9 @@ function showAppShell() {
   renderPendingIndicator();
   // Activer la gestion du bouton retour (évite la déconnexion au retour Android)
   initBackButton();
+  // Initialiser Google Identity Services pour le renouvellement fiable du token.
+  // Si la bibliothèque n'est pas encore chargée, on réessaie après un court délai.
+  if (!initGisTokenClient()) setTimeout(initGisTokenClient, 1500);
 }
 function init() {
   loadLocal();
@@ -6277,6 +6398,7 @@ function init() {
     if (tok) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
       setToken(tok, exp);
+      hideReconnectBanner();
       showAppShell();
       updateBadge('ok');
       const syncBtn = document.getElementById('btn-sync');
