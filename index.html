@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- VERSION 14.3 -->
+<!-- VERSION 14.4 -->
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -28,7 +28,7 @@
     display: "standalone",
     background_color: "#0f172a",
     theme_color: "#2563EB",
-    orientation: "any",
+    orientation: "portrait",
     icons: [
       { src: document.querySelector('link[rel="icon"]').href, sizes: "40x40", type: "image/png", purpose: "any maskable" }
     ]
@@ -581,7 +581,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 14.3</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version 14.4</button>
         </div>
       </div>
     </div>
@@ -6406,9 +6406,29 @@ function showAppShell() {
   // Si la bibliothèque n'est pas encore chargée, on réessaie après un court délai.
   if (!initGisTokenClient()) setTimeout(initGisTokenClient, 1500);
 }
+// Verrouille l'affichage en portrait. L'API screen.orientation.lock() n'est
+// autorisée qu'en plein écran / PWA installée sur la plupart des navigateurs mobiles ;
+// on l'enrobe donc dans un try/catch et on ignore silencieusement les refus.
+function lockPortraitOrientation() {
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      const p = screen.orientation.lock('portrait');
+      // lock() renvoie une promesse ; on absorbe le rejet (navigateur non plein écran, etc.)
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+  } catch(e) { /* API indisponible ou refusée : pas bloquant */ }
+}
+// Re-tenter le verrouillage quand l'app revient au premier plan (après veille,
+// changement d'application, etc. sur la tablette).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') lockPortraitOrientation();
+});
 function init() {
   loadLocal();
   loadPhotos();
+  // Verrouiller l'orientation en portrait (indépendamment du réglage système de la tablette).
+  // Ne fonctionne pleinement qu'en mode PWA installée / plein écran sur la plupart des navigateurs.
+  lockPortraitOrientation();
   // Afficher immédiatement le voyant de connexion (en ligne / hors-ligne / en attente)
   renderPendingIndicator();
   setTimeout(renderPendingIndicator, 100);
