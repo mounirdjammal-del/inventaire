@@ -42,7 +42,7 @@
   if (!('serviceWorker' in navigator)) return;
   // La version du cache est liée à la version de l'app (voir APP_VERSION).
   // Changer la version invalide automatiquement l'ancien cache → mise à jour propre.
-  const APP_VER = 'inv-sb-4-2';
+  const APP_VER = 'inv-sb-4-3';
   const swCode = `
     const CACHE = '${APP_VER}';
     self.addEventListener('install', e => { self.skipWaiting(); });
@@ -605,7 +605,7 @@ code{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padd
             <img src="data:image/png;base64,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" alt="" style="height:16px;width:16px;border-radius:3px">
             <span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.03em">MAFINTEC CONSULTING</span>
           </div>
-          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version SB-4.2</button>
+          <button onclick="checkForUpdate()" style="background:transparent;border:none;cursor:pointer;font-size:9px;color:var(--text3);font-weight:500;padding:2px 6px;display:flex;align-items:center;gap:4px" title="Vérifier les mises à jour"><i class="ti ti-refresh" style="font-size:10px"></i> Version SB-4.3</button>
         </div>
       </div>
     </div>
@@ -880,21 +880,12 @@ function extractCriteresFromObs(obs) {
   return [];
 }
 const SK = 'inv_v4', UK = 'inv_user', GK = 'inv_gs';
-const SH_EXPORT = 'ExportFinal';
-const STATUTS_SITE = ['NON OUVERT','EN COURS','TERMINE'];
-const H_EXPORT = ['SITE','BATIMENT','ETAGE','BUREAU','CODE BARRE EMP','CODE BARRE IMMO','FAMILLE ARTICLE','ARTICLE','QUANTITE','ETAT DE SERVICE','ETAT DE RENOUVELABILITE','CRITERES ETAT','OBSERVATION INITIALE','OBSERVATION MISE A JOUR','ARTICLE TROUVE','NUMERO DE SERIE','MODELE','MARQUE','N° AMENDIS','DIRECTION','PATRIMOINE','NOM INVENTORISTE','DATE INVENTAIRE','STATUT','PHOTOS'];
-const DRIVE_FOLDER_NAME = 'Inventaire_Photos';
-
-let driveFolderId = null;
 let DB = [], HIER = {}, FAMS = {};
 let LOC_INDEX = {}; // cache: 'site|bat|etage|bureau' -> [items]
 let CBI_INDEX = {}; // cache: cbi -> item (lookup O(1))
 let _CBI_NORM_INDEX = {}; // cache: cbi normalisé -> item (détection robuste des doublons)
 let CBE_INDEX = {}; // cache: cbe -> item
 // Cache des lignes Updates : cbi → index de ligne (0-based) dans la feuille
-let UPDATES_INDEX = {};
-let UPDATES_INDEX_SIZE = 0;
-let UPDATES_PHOTOS_CACHE = {};  // cbi → URL photos déjà en feuille
 // Index relationnels (chargés depuis les tables référentielles)
 let REL_SITES = {}, REL_BATS = {}, REL_EMPS = {}, REL_FAMS = {}, REL_ARTS = {};
 let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts = {};
@@ -902,11 +893,9 @@ let currentUser = null, updates = {}, newItems = [], newLocs = [], siteStatuts =
 let bureauStatuts = {};
 let curLoc = { site: '', bat: '', etage: '', bureau: '' };
 // Config conservée pour compatibilité (certaines fonctions la référencent)
-let gsConf = { sheetId: 'supabase' };
 // drillState/progressFilter remplacés par UF.dashFilter/UF.dashSiteFilter/UF.dashSearch (déclarés plus bas)
 let currentView = 'inventory';
 let gTok = null, gTokExpiry = 0, syncTimer = null, refreshTimer = null, isSyncing = false, lastSync = 0;
-let googleProfile = { name: '', email: '', picture: '' };
 let pendingWrites = [];
 let photos = {};
 
@@ -1302,28 +1291,13 @@ async function logoutSupabase() {
   window.location.reload();
 }
 
-// ── Compat : ancien code Google encore référencé ailleurs. Neutralisé. ──
-function startGoogleLogin() { /* remplacé par doSupabaseLogin */ }
-function setToken() { /* obsolète (Supabase gère la session) */ }
+
+
 
 
 // ─── GOOGLE IDENTITY SERVICES (GIS) ──────────────────────────
 // Renouvellement de token fiable via la bibliothèque officielle Google.
 // Beaucoup plus robuste que l'iframe artisanal, notamment sur mobile.
-let _gisTokenClient = null;
-let _gisReady = false;
-
-
-
-
-
-
-
-
-
-function getStoredEmail() {
-  try { return localStorage.getItem('inv_google_email') || ''; } catch(e) { return ''; }
-}
 function updateBadge(state) {
   const b = document.getElementById('gs-badge'), t = document.getElementById('gs-txt'), d = document.getElementById('gs-dot');
   if (!b) return;
@@ -1393,9 +1367,7 @@ function renderPendingIndicator() {
     }
   });
 }
-function disconnectGoogle() {
-  logoutSupabase();
-}
+
 function changeUser() {
   // Déconnexion Supabase → recharge la page et affiche l'écran de connexion email/mot de passe
   logoutSupabase();
@@ -1408,12 +1380,6 @@ function changeUser() {
 // ---------- SHEETS API ----------
 // ---------- API CENTRALISÉ AVEC RETRY EXPONENTIEL ----------
 // Pause entre tentatives (en ms)
-const _RETRY_DELAYS = [1000, 3000, 8000]; // 3 tentatives : 1s, 3s, 8s
-let _apiCallCount = 0;
-let _apiErrorCount = 0;
-
-
-
 async function sGet(range) {
   // Compat : plus utilisé en mode Supabase (lecture via sbSelectAll). Renvoie vide.
   console.warn('sGet appelé en mode Supabase (ignoré):', range);
@@ -1497,7 +1463,7 @@ function getModelesList(marque) {
 // Cache des sheetId d'onglets (title → sheetId) pour éviter les fetch metadata répétés
 let _TAB_SHEET_IDS = null;
 
-function invalidateTabSheetIds() { _TAB_SHEET_IDS = null; }
+
 
 
 
@@ -2268,10 +2234,7 @@ async function loadBureauStatutsFromDB() {
   } catch(e) { console.error('loadBureauStatutsFromDB', e); }
 }
 
-async function loadFromSheets() {
-  // Mode Supabase : rediriger vers le chargement depuis la base.
-  return loadFromDB();
-}
+
 
 async function syncNow() {
   if (!currentUser || isSyncing) return;
@@ -2485,7 +2448,6 @@ function renderSidebarActions() {
   }
   if (can('canSuivi')) html += '<button class="btn btn-block" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi des sites</button>';
   if (can('canExport')) html += '<button class="btn btn-block" onclick="openExport()"><i class="ti ti-download"></i> Exporter Excel</button>';
-  if (can('canExport')) html += '<button class="btn btn-block" onclick="closeSidebar();openDataCenter()" style="background:var(--info-bg);color:var(--info-txt);border-color:var(--info-bg)"><i class="ti ti-database-export"></i> Centre de téléchargement (Admin)</button>';
   if (can('canReset')) html += '<button class="btn btn-block" onclick="resetUpdates()" style="color:var(--danger-txt);border-color:var(--danger-txt)"><i class="ti ti-refresh"></i> Réinitialiser local</button>';
   el.innerHTML = html;
 }
@@ -2589,10 +2551,25 @@ function renderHome() {
   const tot = DB.length + newItems.filter(r => !r._newLoc).length;
   const inv = Object.keys(updates).length;
   const pct = tot ? Math.round(inv / tot * 100) : 0;
-  const name = googleProfile.name || currentUser || '';
+  const name = (currentUser && USER_NAMES[currentUser.toLowerCase()]) || currentUser || '';
 
   // ── STATISTIQUES UTILISATEUR ──
   const myStats = computeUserStats(currentUser);
+
+  // ── CENTRE DE TÉLÉCHARGEMENT (admin uniquement) ──
+  const adminDownloads = can('canExport') ? `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:18px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><i class="ti ti-database-export" style="font-size:18px;color:var(--info-txt)"></i><div style="font-size:15px;font-weight:700">Centre de téléchargement</div><span style="background:var(--warn-bg);color:var(--warn-txt);border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700">ADMIN</span></div>
+      <button class="btn btn-primary btn-block" style="margin-bottom:8px" onclick="dcExportComplet()"><i class="ti ti-file-spreadsheet"></i> Tout télécharger (Excel complet)</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn btn-sm" onclick="dcEtatGlobal()"><i class="ti ti-clipboard-check"></i> État global</button>
+        <button class="btn btn-sm" onclick="dcInventaireBrut()"><i class="ti ti-database"></i> Inventaire</button>
+        <button class="btn btn-sm" onclick="dcEmplacements()"><i class="ti ti-map-pin"></i> Emplacements</button>
+        <button class="btn btn-sm" onclick="dcReferentiels()"><i class="ti ti-list"></i> Référentiels</button>
+        <button class="btn btn-sm" onclick="dcBureaux()"><i class="ti ti-lock"></i> Bureaux</button>
+        <button class="btn btn-sm" onclick="dcJournal()"><i class="ti ti-history"></i> Journal</button>
+      </div>
+    </div>` : '';
 
   main.innerHTML = `<div style="padding:8px 0 20px;max-width:500px;margin:0 auto">
     <div style="margin-bottom:24px"><div style="font-size:26px;font-weight:800;letter-spacing:-.02em">Bonjour${name ? ' ' + esc(name.split(' ')[0]) : ''} 👋</div><div style="font-size:14px;color:var(--text2);margin-top:6px;font-weight:500">Inventaire Immobilisations</div></div>
@@ -2600,8 +2577,10 @@ function renderHome() {
 
     ${myStats.total > 0 ? renderMyStatsCard(myStats) : ''}
 
+    ${adminDownloads}
+
     <div class="home-grid"><div class="home-tile tile-inventory" data-view="inventory" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-clipboard-check"></i></div><div class="tile-label">Inventaire</div><div class="tile-sub">Réaliser l'inventaire</div></div><div class="home-tile tile-progress" data-view="progress" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-chart-bar"></i></div><div class="tile-label">Avancement</div><div class="tile-sub">Voir la progression</div></div><div class="home-tile tile-locations" data-view="locations" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-map-pin"></i></div><div class="tile-label">Emplacements</div><div class="tile-sub">Parcourir les lieux</div></div><div class="home-tile tile-articles" data-view="articles" onclick="goViewData(this)"><div class="tile-icon"><i class="ti ti-box"></i></div><div class="tile-label">Articles</div><div class="tile-sub">Rechercher un article</div></div></div>
-    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">${can('canSuivi') ? '<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button>' : ''}<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button>${can('canExport') ? '<button class="btn btn-sm" onclick="openExport()"><i class="ti ti-download"></i> Exporter</button>' : ''}<button class="btn btn-sm" onclick="openActivityLog()"><i class="ti ti-history"></i> Journal</button></div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">${can('canSuivi') ? '<button class="btn btn-sm" onclick="openSuiviPanel()"><i class="ti ti-chart-bar"></i> Suivi sites</button>' : ''}<button class="btn btn-sm" onclick="openScanLibre()"><i class="ti ti-scan"></i> Scan libre</button><button class="btn btn-sm" onclick="openActivityLog()"><i class="ti ti-history"></i> Journal</button></div>
   </div>`;
 }
 
@@ -2803,7 +2782,7 @@ function renderMain() {
 
 function renderInventoryHome() {
   const main = document.getElementById('main');
-  const name = googleProfile.name || currentUser || '';
+  const name = (currentUser && USER_NAMES[currentUser.toLowerCase()]) || currentUser || '';
   const tot = DB.length + newItems.filter(r => !r._newLoc).length;
   const inv = Object.keys(updates).length;
   const pct = tot ? Math.round(inv / tot * 100) : 0;
@@ -5022,11 +5001,6 @@ async function saveUpd(cbi) {
 }
 
 // Cache: cbi → numéro de ligne dans la feuille Inventaire (0-based)
-let INVENTAIRE_INDEX = {};
-let INVENTAIRE_INDEX_BUILT = false;
-
-
-
 // Met à jour la ligne inventaire dans Supabase (caractéristiques modifiées)
 async function updateInventoryRow(item) {
   if (!currentUser || !navigator.onLine || !sb) return;
@@ -5723,27 +5697,7 @@ function buildEtatGlobalRows(rows) {
   });
 }
 
-// Ouvre le panneau Centre de téléchargement
-function openDataCenter() {
-  if (!can('canExport')) { showToast('Accès réservé à l\'administrateur', 'danger'); return; }
-  showModal(`<div class="modal-drag"></div>
-    <div class="modal-head"><h2><i class="ti ti-database-export"></i> Centre de téléchargement</h2><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div class="alert" style="background:var(--info-bg);color:var(--info-txt);margin-bottom:16px"><i class="ti ti-info-circle"></i> Téléchargez les données directement depuis la base (toutes saisies confondues, tous opérateurs).</div>
 
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text2)"><i class="ti ti-package"></i> Export complet</div>
-      <button class="btn btn-primary btn-block btn-lg" onclick="dcExportComplet()"><i class="ti ti-file-spreadsheet"></i> Tout télécharger (1 fichier, plusieurs feuilles)</button>
-      <div style="font-size:11px;color:var(--text3);margin:4px 0 16px;text-align:center">État global + Inventaire + Emplacements + Référentiels + Bureaux + Journal</div>
-
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text2)"><i class="ti ti-files"></i> Téléchargements individuels</div>
-      <button class="btn btn-block" onclick="dcEtatGlobal()"><i class="ti ti-clipboard-check"></i> État global de l'inventaire</button>
-      <button class="btn btn-block" onclick="dcInventaireBrut()"><i class="ti ti-database"></i> Inventaire (données brutes)</button>
-      <button class="btn btn-block" onclick="dcEmplacements()"><i class="ti ti-map-pin"></i> Emplacements</button>
-      <button class="btn btn-block" onclick="dcReferentiels()"><i class="ti ti-list"></i> Référentiels (sites, bâtiments, familles, articles)</button>
-      <button class="btn btn-block" onclick="dcBureaux()"><i class="ti ti-lock"></i> Statuts de clôture des bureaux</button>
-      <button class="btn btn-block" onclick="dcJournal()"><i class="ti ti-history"></i> Journal d'activité</button>
-    </div>`);
-}
 
 // Export complet multi-feuilles
 async function dcExportComplet() {
@@ -6091,16 +6045,7 @@ function bureauCard(b) {
 }
 
 
-async function changeSiteStatut(site, statut) {
-  await writeSuivi(site, statut);
-  const now = new Date().toLocaleDateString('fr-FR');
-  const prev = siteStatuts[site] || {};
-  siteStatuts[site] = { statut, by: currentUser, dateDebut: prev.dateDebut || now, dateMaj: now, obs: prev.obs || '' };
-  saveLocal();
-  openSuiviPanel();
-  renderMain();
-  showToast(site + ' → ' + statut, 'success');
-}
+
 async function generateExportFinal() {
   // En mode Supabase, l'export se fait directement depuis la base.
   return exportFromDB();
